@@ -82,7 +82,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
     ...(user.role === 'admin'
       ? [
           {
-            name: 'Admin Panel',
+            name: 'Management',
             href: '/admin',
             icon: (
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -204,7 +204,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
                   : isActive('/dashboard/reports')
                   ? 'Sales Reports'
                   : isActive('/admin')
-                  ? 'Admin Panel'
+                  ? 'Management'
                   : ''}
               </h2>
             </div>

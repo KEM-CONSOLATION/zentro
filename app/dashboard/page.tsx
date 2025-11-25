@@ -4,6 +4,8 @@ import DashboardLayout from '@/components/DashboardLayout'
 import Link from 'next/link'
 import ProfitLossView from '@/components/ProfitLossView'
 import ExpensesForm from '@/components/ExpensesForm'
+import SalesTrendChart from '@/components/SalesTrendChart'
+import TopItemsChart from '@/components/TopItemsChart'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -91,6 +93,11 @@ export default async function DashboardPage() {
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Sales/Usage</h2>
             <p className="text-gray-600 text-sm">Record items used during sales</p>
           </Link>
+        </div>
+
+        <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SalesTrendChart />
+          <TopItemsChart />
         </div>
 
         <div className="mt-8">
