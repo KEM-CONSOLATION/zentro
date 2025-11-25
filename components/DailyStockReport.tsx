@@ -42,7 +42,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
         setReport(data)
       }
     } catch (error) {
-      console.error('Error fetching report:', error)
+      // Error fetching report
     } finally {
       setLoading(false)
     }
@@ -103,7 +103,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                 : 'Automatically calculated: Opening Stock - Sales'}
             </p>
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto -mx-6 px-6">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

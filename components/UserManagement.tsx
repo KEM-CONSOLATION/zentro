@@ -85,9 +85,10 @@ export default function UserManagement() {
       setSuccess(`User ${newUser.email} created successfully!`)
       setNewUser({ email: '', password: '', fullName: '', role: 'staff' })
       setShowCreateForm(false)
-      fetchUsers() // Refresh the list
+      
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      await fetchUsers()
 
-      // Clear success message after 5 seconds
       setTimeout(() => setSuccess(null), 5000)
     } catch (err: any) {
       setError(err.message || 'Failed to create user')
@@ -215,7 +216,8 @@ export default function UserManagement() {
         <div className="text-center py-8">Loading users...</div>
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -287,6 +289,7 @@ export default function UserManagement() {
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

@@ -53,7 +53,7 @@ export default function HistoryView() {
         setSales(salesData as (Sale & { item?: Item; recorded_by_profile?: Profile })[])
       }
     } catch (error) {
-      console.error('Error fetching data:', error)
+      // Error fetching data
     } finally {
       setLoading(false)
     }
@@ -130,7 +130,7 @@ export default function HistoryView() {
               {openingStocks.length === 0 ? (
                 <p className="text-gray-500">No opening stock records for this date</p>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto -mx-6 px-6">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
@@ -168,7 +168,7 @@ export default function HistoryView() {
               {closingStocks.length === 0 ? (
                 <p className="text-gray-500">No closing stock records for this date</p>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto -mx-6 px-6">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
@@ -212,7 +212,7 @@ export default function HistoryView() {
               {sales.length === 0 ? (
                 <p className="text-gray-500">No sales records for this date</p>
               ) : (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto -mx-6 px-6">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>

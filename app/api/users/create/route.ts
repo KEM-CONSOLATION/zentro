@@ -4,7 +4,6 @@ import { createClient as createServerClient } from '@/lib/supabase/server'
 
 export async function POST(request: NextRequest) {
   try {
-    // Verify the current user is an admin
     const supabase = await createServerClient()
     const {
       data: { user },
@@ -14,7 +13,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Check if user is admin
     const { data: profile } = await supabase
       .from('profiles')
       .select('role')
@@ -25,7 +23,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
     }
 
-    // Parse request body
     const body = await request.json()
     const { email, password, fullName, role } = body
 
@@ -36,7 +33,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use service role client to create user (requires SUPABASE_SERVICE_ROLE_KEY)
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
     if (!serviceRoleKey) {
       return NextResponse.json(
@@ -56,11 +52,10 @@ export async function POST(request: NextRequest) {
       }
     )
 
-    // Create user with metadata
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Auto-confirm the email
+      email_confirm: true,
       user_metadata: {
         full_name: fullName || '',
         role: role || 'staff',
@@ -71,16 +66,83 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: createError.message }, { status: 400 })
     }
 
-    // The trigger will automatically create the profile, but let's verify it was created
-    // and update the role if needed
     if (newUser.user) {
-      const { error: profileError } = await supabaseAdmin
-        .from('profiles')
-        .update({ role: (role as 'admin' | 'staff') || 'staff' })
-        .eq('id', newUser.user.id)
+      let profileCreated = false
+      let retries = 0
+      const maxRetries = 5
 
-      if (profileError) {
-        // Don't fail the request, profile was created by trigger
+      while (!profileCreated && retries < maxRetries) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        
+        const { data: existingProfile } = await supabaseAdmin
+          .from('profiles')
+          .select('id, role')
+          .eq('id', newUser.user.id)
+          .single()
+
+        if (existingProfile) {
+          if (existingProfile.role !== role) {
+            const { error: updateError } = await supabaseAdmin
+              .from('profiles')
+              .update({ role: (role as 'admin' | 'staff') || 'staff' })
+              .eq('id', newUser.user.id)
+
+            if (updateError) {
+              return NextResponse.json(
+                { error: `User created but role update failed: ${updateError.message}` },
+                { status: 500 }
+              )
+            }
+          }
+          profileCreated = true
+        } else {
+          const { error: insertError } = await supabaseAdmin
+            .from('profiles')
+            .insert({
+              id: newUser.user.id,
+              email: newUser.user.email || email,
+              full_name: fullName || null,
+              role: (role as 'admin' | 'staff') || 'staff',
+            })
+
+          if (!insertError) {
+            profileCreated = true
+          } else if (insertError.code === '23505') {
+            const { data: conflictProfile } = await supabaseAdmin
+              .from('profiles')
+              .select('id, role')
+              .eq('id', newUser.user.id)
+              .single()
+            
+            if (conflictProfile) {
+              if (conflictProfile.role !== role) {
+                const { error: updateError } = await supabaseAdmin
+                  .from('profiles')
+                  .update({ role: (role as 'admin' | 'staff') || 'staff' })
+                  .eq('id', newUser.user.id)
+                
+                if (!updateError) {
+                  profileCreated = true
+                }
+              } else {
+                profileCreated = true
+              }
+            }
+          } else {
+            return NextResponse.json(
+              { error: `User created but profile creation failed: ${insertError.message}` },
+              { status: 500 }
+            )
+          }
+        }
+        retries++
+      }
+
+      if (!profileCreated) {
+        return NextResponse.json(
+          { error: 'User created but profile could not be verified. Please try refreshing the user list.' },
+          { status: 500 }
+        )
       }
     }
 

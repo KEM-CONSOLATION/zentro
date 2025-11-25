@@ -92,7 +92,7 @@ export default function ProfitLossView() {
       setTotalExpenses(expensesTotal)
       setNetProfit(profitTotal - expensesTotal)
     } catch (error) {
-      console.error('Error calculating profit/loss:', error)
+      // Error calculating profit/loss
     } finally {
       setLoading(false)
     }
@@ -150,7 +150,7 @@ export default function ProfitLossView() {
           {salesDetails.length > 0 && (
             <div className="mt-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Item-wise Profit Breakdown</h3>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto -mx-6 px-6">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>

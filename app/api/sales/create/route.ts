@@ -20,13 +20,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Get opening stock for the date (opening stock should remain constant)
-    const { data: openingStock } = await supabaseAdmin
-      .from('opening_stock')
+    // Get item's current quantity (total stock)
+    const { data: item, error: itemError } = await supabaseAdmin
+      .from('items')
       .select('quantity')
-      .eq('item_id', item_id)
-      .eq('date', date)
+      .eq('id', item_id)
       .single()
+
+    if (itemError || !item) {
+      return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+    }
 
     // Get total sales for the date so far
     const { data: existingSales } = await supabaseAdmin
@@ -36,13 +39,20 @@ export async function POST(request: NextRequest) {
       .eq('date', date)
 
     const totalSalesSoFar = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
-    const openingQty = openingStock?.quantity || 0
 
-    // Validate quantity doesn't exceed opening stock minus sales already made
-    const availableStock = openingQty - totalSalesSoFar
+    // Available stock = Item's current quantity - Sales already made today
+    const availableStock = item.quantity - totalSalesSoFar
+
+    if (availableStock <= 0) {
+      return NextResponse.json(
+        { error: `No available stock. Current quantity: ${item.quantity}, Already sold today: ${totalSalesSoFar}` },
+        { status: 400 }
+      )
+    }
+
     if (parseFloat(quantity) > availableStock) {
       return NextResponse.json(
-        { error: `Cannot record sales of ${quantity}. Available stock: ${availableStock}` },
+        { error: `Cannot record sales of ${quantity}. Available stock: ${availableStock} (Current quantity: ${item.quantity}, Already sold: ${totalSalesSoFar})` },
         { status: 400 }
       )
     }

@@ -280,7 +280,7 @@ export default function OpeningStockForm() {
       {stocks.length > 0 && (
         <div className="mt-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">Recent Opening Stock Records</h3>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto -mx-6 px-6">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>

@@ -36,7 +36,7 @@ export default function SalesReports() {
         await fetchMonthlySales()
       }
     } catch (error) {
-      console.error('Error fetching reports:', error)
+      // Error fetching reports
     } finally {
       setLoading(false)
     }
@@ -203,7 +203,7 @@ export default function SalesReports() {
             {salesDetails.length === 0 ? (
               <p className="text-gray-500">No sales records found for this period</p>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto -mx-6 px-6">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>

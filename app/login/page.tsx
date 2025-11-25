@@ -29,21 +29,36 @@ function LoginForm() {
 
       if (error) throw error
 
-      await new Promise(resolve => setTimeout(resolve, 300))
+      await new Promise(resolve => setTimeout(resolve, 500))
       
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single()
+      let profile = null
+      let retries = 0
+      const maxRetries = 3
+
+      while (!profile && retries < maxRetries) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single()
+
+        if (profileData) {
+          profile = profileData
+          break
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 500))
+        retries++
+      }
 
       if (!profile) {
+        await supabase.auth.signOut()
         setError('Profile not found. Please contact an administrator.')
         setLoading(false)
         return
       }
 
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await new Promise(resolve => setTimeout(resolve, 500))
       window.location.replace('/dashboard')
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'

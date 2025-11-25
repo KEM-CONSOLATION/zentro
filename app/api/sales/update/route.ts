@@ -20,13 +20,16 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Get opening stock for the date (opening stock should remain constant)
-    const { data: openingStock } = await supabaseAdmin
-      .from('opening_stock')
+    // Get item's current quantity (total stock)
+    const { data: item, error: itemError } = await supabaseAdmin
+      .from('items')
       .select('quantity')
-      .eq('item_id', item_id)
-      .eq('date', date)
+      .eq('id', item_id)
       .single()
+
+    if (itemError || !item) {
+      return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+    }
 
     // Get total sales for the date excluding this sale
     const { data: existingSales } = await supabaseAdmin
@@ -37,18 +40,25 @@ export async function PUT(request: NextRequest) {
       .neq('id', sale_id)
 
     const totalSalesExcludingThis = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
-    const openingQty = openingStock?.quantity || 0
 
-    // Validate new quantity doesn't exceed opening stock minus other sales
-    const availableStock = openingQty - totalSalesExcludingThis
-    if (parseFloat(quantity) > availableStock) {
+    // Available stock = Item's current quantity - Other sales already made today
+    const availableStock = item.quantity - totalSalesExcludingThis
+
+    if (availableStock <= 0) {
       return NextResponse.json(
-        { error: `Cannot update. Available stock: ${availableStock}` },
+        { error: `No available stock. Current quantity: ${item.quantity}, Already sold today: ${totalSalesExcludingThis}` },
         { status: 400 }
       )
     }
 
-    // Update sale record (DO NOT update item quantity - opening stock stays constant)
+    if (parseFloat(quantity) > availableStock) {
+      return NextResponse.json(
+        { error: `Cannot update. Available stock: ${availableStock} (Current quantity: ${item.quantity}, Already sold: ${totalSalesExcludingThis})` },
+        { status: 400 }
+      )
+    }
+
+    // Update sale record (DO NOT update item quantity - sales are tracked separately)
     const { error: saleError } = await supabaseAdmin
       .from('sales')
       .update({

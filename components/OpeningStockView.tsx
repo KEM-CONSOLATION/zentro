@@ -102,7 +102,7 @@ export default function OpeningStockView() {
           <p className="mt-4 text-gray-500">Calculating opening stocks...</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto -mx-6 px-6">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

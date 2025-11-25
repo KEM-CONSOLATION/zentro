@@ -24,6 +24,10 @@ export default function SalesForm() {
     fetchItems()
     fetchSales()
     checkUserRole()
+  }, [date])
+
+  useEffect(() => {
+    fetchItems()
   }, [])
 
   // Calculate price when item or quantity changes
@@ -54,11 +58,15 @@ export default function SalesForm() {
   }
 
   const fetchItems = async () => {
-    const { data, error } = await supabase.from('items').select('*').order('name')
-    if (error) {
-      // Error fetching items
-    } else {
-      setItems(data || [])
+    try {
+      const { data, error } = await supabase.from('items').select('*').order('name')
+      if (error) {
+        setMessage({ type: 'error', text: 'Failed to fetch items. Please refresh the page.' })
+      } else {
+        setItems(data || [])
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Failed to fetch items. Please refresh the page.' })
     }
   }
 
@@ -70,8 +78,8 @@ export default function SalesForm() {
         item:items(*),
         recorded_by_profile:profiles(*)
       `)
-      .order('date', { ascending: false })
-      .limit(50)
+      .eq('date', date)
+      .order('created_at', { ascending: false })
 
     if (error) {
       // Error fetching sales
@@ -79,6 +87,7 @@ export default function SalesForm() {
       setSales(data || [])
     }
   }
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -103,17 +112,34 @@ export default function SalesForm() {
         return
       }
 
-      // Validate quantity doesn't exceed opening stock minus sales already made
+      // Validate quantity doesn't exceed item's current quantity minus sales already made
       if (selectedItem) {
         const quantityValue = parseFloat(quantity)
         
-        // Get opening stock for the date
-        const { data: openingStock } = await supabase
-          .from('opening_stock')
-          .select('quantity')
-          .eq('item_id', selectedItem)
-          .eq('date', date)
+        if (isNaN(quantityValue) || quantityValue <= 0) {
+          setMessage({ 
+            type: 'error', 
+            text: 'Please enter a valid quantity greater than 0' 
+          })
+          setLoading(false)
+          return
+        }
+
+        // Fetch fresh item data to ensure we have the latest quantity
+        const { data: freshItem, error: itemError } = await supabase
+          .from('items')
+          .select('quantity, name, unit')
+          .eq('id', selectedItem)
           .single()
+
+        if (itemError || !freshItem) {
+          setMessage({ 
+            type: 'error', 
+            text: 'Item not found. Please refresh and try again.' 
+          })
+          setLoading(false)
+          return
+        }
 
         // Get total sales for the date so far (excluding current sale if editing)
         const { data: existingSales } = await supabase
@@ -128,13 +154,22 @@ export default function SalesForm() {
           return sum + parseFloat(s.quantity.toString())
         }, 0) || 0
         
-        const openingQty = openingStock?.quantity || 0
-        const availableStock = openingQty - totalSalesSoFar
+        // Available stock = Item's current quantity - Sales already made today
+        const availableStock = freshItem.quantity - totalSalesSoFar
+        
+        if (availableStock <= 0) {
+          setMessage({ 
+            type: 'error', 
+            text: `No available stock. Current quantity: ${freshItem.quantity}, Already sold today: ${totalSalesSoFar}` 
+          })
+          setLoading(false)
+          return
+        }
         
         if (quantityValue > availableStock) {
           setMessage({ 
             type: 'error', 
-            text: `Cannot record sales of ${quantityValue}. Available stock: ${availableStock}` 
+            text: `Cannot record sales of ${quantityValue}. Available stock: ${availableStock} (Current quantity: ${freshItem.quantity}, Already sold: ${totalSalesSoFar})` 
           })
           setLoading(false)
           return
@@ -172,23 +207,23 @@ export default function SalesForm() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              item_id: selectedItem,
-              quantity: parseFloat(quantity),
+        item_id: selectedItem,
+        quantity: parseFloat(quantity),
               price_per_unit: parseFloat(pricePerUnit) || 0,
               total_price: parseFloat(totalPrice) || 0,
               payment_mode: paymentMode,
-              date,
-              description: description || null,
+        date,
+        description: description || null,
               user_id: user.id,
             }),
-        })
+      })
 
         const data = await response.json()
         if (!response.ok) {
           throw new Error(data.error || 'Failed to record sales')
         }
 
-        setMessage({ type: 'success', text: 'Sales recorded successfully!' })
+      setMessage({ type: 'success', text: 'Sales recorded successfully!' })
       }
 
       setQuantity('')
@@ -199,7 +234,7 @@ export default function SalesForm() {
       setSelectedItem('')
       setDate(format(new Date(), 'yyyy-MM-dd'))
       await fetchSales()
-      await fetchItems() // Refresh items to show updated quantities
+      await fetchItems()
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to record sales'
       setMessage({ type: 'error', text: errorMessage })
@@ -329,22 +364,24 @@ export default function SalesForm() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
           >
             <option value="">Select an item</option>
-            {items.map((item) => (
+            {items.map((item) => {
+              const itemSales = sales.filter(s => s.item_id === item.id)
+              const totalSales = itemSales.reduce((sum, s) => sum + s.quantity, 0)
+              // Available = Current quantity - Sales already made today
+              const available = item.quantity - totalSales
+              
+              return (
               <option key={item.id} value={item.id}>
-                {item.name} ({item.unit})
+                  {item.name} ({item.unit}) - Available: {available > 0 ? available : 0}
               </option>
-            ))}
+              )
+            })}
           </select>
         </div>
 
         <div>
           <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
             Quantity Used
-            {selectedItem && (
-              <span className="ml-2 text-xs text-gray-500">
-                (Max: {items.find(item => item.id === selectedItem)?.quantity || 0} {items.find(item => item.id === selectedItem)?.unit || ''})
-              </span>
-            )}
           </label>
           <input
             id="quantity"
@@ -354,17 +391,29 @@ export default function SalesForm() {
             onChange={(e) => handleQuantityChange(e.target.value)}
             required
             min="0"
-            max={selectedItem ? items.find(item => item.id === selectedItem)?.quantity : undefined}
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder:text-black"
             placeholder="0"
           />
           {selectedItem && (() => {
+            const itemSales = sales.filter(s => s.item_id === selectedItem)
+            const totalSales = itemSales.reduce((sum, s) => sum + s.quantity, 0)
             const item = items.find(item => item.id === selectedItem)
-            return item && item.selling_price > 0 ? (
-              <p className="mt-1 text-xs text-gray-500">
-                Selling price: ₦{item.selling_price.toFixed(2)}/{item.unit}
-              </p>
-            ) : null
+            const available = (item?.quantity || 0) - totalSales
+            
+            if (!item) return null
+            
+            return (
+              <div className="mt-1 space-y-1">
+                {item.selling_price > 0 && (
+                  <p className="text-xs text-gray-500">
+                    Selling price: ₦{item.selling_price.toFixed(2)}/{item.unit}
+                  </p>
+                )}
+                <p className={`text-xs ${available > 0 ? 'text-gray-500' : 'text-red-600'}`}>
+                  Available stock: {available > 0 ? available : 0} {item.unit} (Current: {item.quantity}, Sold today: {totalSales})
+                </p>
+              </div>
+            )
           })()}
         </div>
 
@@ -442,9 +491,9 @@ export default function SalesForm() {
         </div>
 
         <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={loading}
+        <button
+          type="submit"
+          disabled={loading}
             className="flex-1 bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
           >
             {loading ? 'Saving...' : editingSale ? 'Update Sales' : 'Record Sales'}
@@ -457,7 +506,7 @@ export default function SalesForm() {
               className="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
             >
               Cancel
-            </button>
+        </button>
           )}
         </div>
       </form>
@@ -465,7 +514,7 @@ export default function SalesForm() {
       {sales.length > 0 && (
         <div className="mt-6">
           <h3 className="text-lg font-semibold text-gray-900 mb-3">Recent Sales/Usage Records</h3>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto -mx-6 px-6">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
