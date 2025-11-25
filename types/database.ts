@@ -14,7 +14,8 @@ export interface Item {
   name: string
   unit: string
   quantity: number
-  price_per_unit: number
+  cost_price: number
+  selling_price: number
   description: string | null
   created_at: string
   updated_at: string
@@ -50,11 +51,24 @@ export interface Sale {
   quantity: number
   price_per_unit: number
   total_price: number
+  payment_mode: 'cash' | 'transfer'
   date: string
   recorded_by: string
   description: string | null
   created_at: string
   item?: Item
+  recorded_by_profile?: Profile
+}
+
+export interface Expense {
+  id: string
+  description: string
+  amount: number
+  date: string
+  recorded_by: string
+  category: string | null
+  notes: string | null
+  created_at: string
   recorded_by_profile?: Profile
 }
 

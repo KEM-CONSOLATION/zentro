@@ -14,36 +14,41 @@ export async function PUT(request: NextRequest) {
     })
 
     const body = await request.json()
-    const { sale_id, item_id, quantity, price_per_unit, total_price, date, description, old_quantity } = body
+    const { sale_id, item_id, quantity, price_per_unit, total_price, payment_mode, date, description, old_quantity } = body
 
     if (!sale_id || !item_id || !quantity || !date || old_quantity === undefined) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Get current item quantity
-    const { data: item, error: itemError } = await supabaseAdmin
-      .from('items')
+    // Get opening stock for the date (opening stock should remain constant)
+    const { data: openingStock } = await supabaseAdmin
+      .from('opening_stock')
       .select('quantity')
-      .eq('id', item_id)
+      .eq('item_id', item_id)
+      .eq('date', date)
       .single()
 
-    if (itemError || !item) {
-      return NextResponse.json({ error: 'Item not found' }, { status: 404 })
-    }
+    // Get total sales for the date excluding this sale
+    const { data: existingSales } = await supabaseAdmin
+      .from('sales')
+      .select('quantity')
+      .eq('item_id', item_id)
+      .eq('date', date)
+      .neq('id', sale_id)
 
-    // Calculate the difference: restore old quantity, then subtract new quantity
-    const quantityDiff = parseFloat(quantity) - parseFloat(old_quantity)
-    const newQuantity = item.quantity - quantityDiff
+    const totalSalesExcludingThis = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
+    const openingQty = openingStock?.quantity || 0
 
-    // Validate new quantity doesn't go negative
-    if (newQuantity < 0) {
+    // Validate new quantity doesn't exceed opening stock minus other sales
+    const availableStock = openingQty - totalSalesExcludingThis
+    if (parseFloat(quantity) > availableStock) {
       return NextResponse.json(
-        { error: `Cannot update. Available stock after adjustment: ${item.quantity + parseFloat(old_quantity)}` },
+        { error: `Cannot update. Available stock: ${availableStock}` },
         { status: 400 }
       )
     }
 
-    // Update sale record
+    // Update sale record (DO NOT update item quantity - opening stock stays constant)
     const { error: saleError } = await supabaseAdmin
       .from('sales')
       .update({
@@ -51,6 +56,7 @@ export async function PUT(request: NextRequest) {
         quantity: parseFloat(quantity),
         price_per_unit: parseFloat(price_per_unit) || 0,
         total_price: parseFloat(total_price) || 0,
+        payment_mode: payment_mode || 'cash',
         date,
         description: description || null,
       })
@@ -60,17 +66,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: saleError.message }, { status: 500 })
     }
 
-    // Update item quantity
-    const { error: updateError } = await supabaseAdmin
-      .from('items')
-      .update({ quantity: newQuantity })
-      .eq('id', item_id)
-
-    if (updateError) {
-      return NextResponse.json({ error: 'Failed to update item quantity' }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true, updatedQuantity: newQuantity })
+    return NextResponse.json({ success: true })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to update sales'
     return NextResponse.json({ error: errorMessage }, { status: 500 })

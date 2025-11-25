@@ -20,7 +20,8 @@ CREATE TABLE public.items (
   name TEXT NOT NULL UNIQUE,
   unit TEXT NOT NULL DEFAULT 'pieces', -- e.g., 'kg', 'liters', 'pieces', 'bags'
   quantity INTEGER NOT NULL DEFAULT 0,
-  price_per_unit DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  cost_price DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  selling_price DECIMAL(10, 2) NOT NULL DEFAULT 0,
   description TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
@@ -57,9 +58,22 @@ CREATE TABLE public.sales (
   quantity DECIMAL(10, 2) NOT NULL,
   price_per_unit DECIMAL(10, 2) NOT NULL DEFAULT 0,
   total_price DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  payment_mode TEXT NOT NULL DEFAULT 'cash' CHECK (payment_mode IN ('cash', 'transfer')),
   date DATE NOT NULL,
   recorded_by UUID REFERENCES public.profiles(id) NOT NULL,
   description TEXT, -- e.g., "Rice, Egusi & Fufu"
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- Expenses table
+CREATE TABLE public.expenses (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  description TEXT NOT NULL,
+  amount DECIMAL(10, 2) NOT NULL,
+  date DATE NOT NULL,
+  recorded_by UUID REFERENCES public.profiles(id) NOT NULL,
+  category TEXT,
+  notes TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
@@ -70,6 +84,8 @@ CREATE INDEX idx_closing_stock_date ON public.closing_stock(date);
 CREATE INDEX idx_closing_stock_item ON public.closing_stock(item_id);
 CREATE INDEX idx_sales_date ON public.sales(date);
 CREATE INDEX idx_sales_item ON public.sales(item_id);
+CREATE INDEX idx_expenses_date ON public.expenses(date);
+CREATE INDEX idx_expenses_recorded_by ON public.expenses(recorded_by);
 
 -- Row Level Security (RLS) Policies
 
@@ -79,6 +95,7 @@ ALTER TABLE public.items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.opening_stock ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.closing_stock ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.sales ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 
 -- Profiles policies
 CREATE POLICY "Users can view their own profile"
@@ -207,6 +224,33 @@ CREATE POLICY "Admins can update sales"
 
 CREATE POLICY "Admins can delete sales"
   ON public.sales FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
+-- Expenses policies
+CREATE POLICY "Users can view expenses"
+  ON public.expenses FOR SELECT
+  USING (true);
+
+CREATE POLICY "Users can insert expenses"
+  ON public.expenses FOR INSERT
+  WITH CHECK (auth.uid() = recorded_by);
+
+CREATE POLICY "Admins can update expenses"
+  ON public.expenses FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.profiles
+      WHERE id = auth.uid() AND role = 'admin'
+    )
+  );
+
+CREATE POLICY "Admins can delete expenses"
+  ON public.expenses FOR DELETE
   USING (
     EXISTS (
       SELECT 1 FROM public.profiles

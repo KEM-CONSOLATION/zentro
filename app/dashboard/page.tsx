@@ -2,6 +2,8 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DashboardLayout from '@/components/DashboardLayout'
 import Link from 'next/link'
+import ProfitLossView from '@/components/ProfitLossView'
+import ExpensesForm from '@/components/ExpensesForm'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -89,6 +91,14 @@ export default async function DashboardPage() {
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Sales/Usage</h2>
             <p className="text-gray-600 text-sm">Record items used during sales</p>
           </Link>
+        </div>
+
+        <div className="mt-8">
+          <ProfitLossView />
+        </div>
+
+        <div className="mt-8">
+          <ExpensesForm />
         </div>
       </div>
     </DashboardLayout>

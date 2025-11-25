@@ -12,7 +12,8 @@ export default function ItemManagement() {
     name: '',
     unit: 'pieces',
     quantity: '',
-    price_per_unit: '',
+    cost_price: '',
+    selling_price: '',
     description: '',
   })
   const [editingItem, setEditingItem] = useState<Item | null>(null)
@@ -47,7 +48,8 @@ export default function ItemManagement() {
             name: formData.name,
             unit: formData.unit,
             quantity: parseInt(formData.quantity, 10) || 0,
-            price_per_unit: parseFloat(formData.price_per_unit) || 0,
+            cost_price: parseFloat(formData.cost_price) || 0,
+            selling_price: parseFloat(formData.selling_price) || 0,
             description: formData.description || null,
           })
           .eq('id', editingItem.id)
@@ -60,7 +62,8 @@ export default function ItemManagement() {
           name: formData.name,
           unit: formData.unit,
           quantity: parseInt(formData.quantity, 10) || 0,
-          price_per_unit: parseFloat(formData.price_per_unit) || 0,
+          cost_price: parseFloat(formData.cost_price) || 0,
+          selling_price: parseFloat(formData.selling_price) || 0,
           description: formData.description || null,
         })
 
@@ -68,7 +71,7 @@ export default function ItemManagement() {
         setMessage({ type: 'success', text: 'Item created successfully!' })
       }
 
-      setFormData({ name: '', unit: 'pieces', quantity: '', price_per_unit: '', description: '' })
+      setFormData({ name: '', unit: 'pieces', quantity: '', cost_price: '', selling_price: '', description: '' })
       setEditingItem(null)
       setShowForm(false)
       fetchItems()
@@ -86,7 +89,8 @@ export default function ItemManagement() {
       name: item.name,
       unit: item.unit,
       quantity: item.quantity.toString(),
-      price_per_unit: item.price_per_unit.toString(),
+      cost_price: item.cost_price?.toString(),
+      selling_price: item.selling_price?.toString(),
       description: item.description || '',
     })
     setShowForm(true)
@@ -114,7 +118,7 @@ export default function ItemManagement() {
           onClick={() => {
             setShowForm(!showForm)
             setEditingItem(null)
-            setFormData({ name: '', unit: 'pieces', quantity: '', price_per_unit: '', description: '' })
+            setFormData({ name: '', unit: 'pieces', quantity: '', cost_price: '', selling_price: '', description: '' })
           }}
           className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 cursor-pointer transition-colors"
         >
@@ -195,21 +199,39 @@ export default function ItemManagement() {
             </div>
 
             <div>
-              <label htmlFor="price_per_unit" className="block text-sm font-medium text-gray-700 mb-1">
-                Price Per Unit
+              <label htmlFor="cost_price" className="block text-sm font-medium text-gray-700 mb-1">
+                Cost Price (₦)
               </label>
               <input
-                id="price_per_unit"
+                id="cost_price"
                 type="number"
                 step="0.01"
                 min="0"
-                value={formData.price_per_unit}
-                onChange={(e) => setFormData({ ...formData, price_per_unit: e.target.value })}
+                value={formData.cost_price}
+                onChange={(e) => setFormData({ ...formData, cost_price: e.target.value })}
                 required
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder:text-black"
                 placeholder="0.00"
               />
-              <p className="mt-1 text-xs text-gray-500">Price for one {formData.unit}</p>
+              <p className="mt-1 text-xs text-gray-500">Purchase cost for one {formData.unit}</p>
+            </div>
+
+            <div>
+              <label htmlFor="selling_price" className="block text-sm font-medium text-gray-700 mb-1">
+                Selling Price (₦)
+              </label>
+              <input
+                id="selling_price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.selling_price}
+                onChange={(e) => setFormData({ ...formData, selling_price: e.target.value })}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder:text-black"
+                placeholder="0.00"
+              />
+              <p className="mt-1 text-xs text-gray-500">Selling price for one {formData.unit}</p>
             </div>
 
             <div>
@@ -254,7 +276,10 @@ export default function ItemManagement() {
                   Quantity
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Price Per Unit
+                  Cost Price
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Selling Price
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Description
@@ -267,7 +292,7 @@ export default function ItemManagement() {
             <tbody className="bg-white divide-y divide-gray-200">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-4 text-center text-gray-500">
                     No items found. Add your first item to get started.
                   </td>
                 </tr>
@@ -282,7 +307,10 @@ export default function ItemManagement() {
                       {item.quantity} {item.unit}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      ₦{item.price_per_unit.toFixed(2)}/{item.unit}
+                      ₦{item.cost_price?.toFixed(2)}/{item.unit}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      ₦{item.selling_price?.toFixed(2)}/{item.unit}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">{item.description || '-'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">

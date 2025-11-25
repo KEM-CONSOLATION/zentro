@@ -12,6 +12,7 @@ export default function SalesForm() {
   const [quantity, setQuantity] = useState('')
   const [pricePerUnit, setPricePerUnit] = useState('')
   const [totalPrice, setTotalPrice] = useState('')
+  const [paymentMode, setPaymentMode] = useState<'cash' | 'transfer'>('cash')
   const [description, setDescription] = useState('')
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'))
   const [loading, setLoading] = useState(false)
@@ -29,9 +30,9 @@ export default function SalesForm() {
   useEffect(() => {
     if (selectedItem && quantity) {
       const selectedItemData = items.find(item => item.id === selectedItem)
-      if (selectedItemData && selectedItemData.price_per_unit > 0) {
+      if (selectedItemData && selectedItemData.selling_price > 0) {
         const qty = parseFloat(quantity) || 0
-        const price = selectedItemData.price_per_unit
+        const price = selectedItemData.selling_price
         setPricePerUnit(price.toString())
         setTotalPrice((qty * price).toFixed(2))
       }
@@ -102,15 +103,38 @@ export default function SalesForm() {
         return
       }
 
-      // Validate quantity doesn't exceed available stock
+      // Validate quantity doesn't exceed opening stock minus sales already made
       if (selectedItem) {
-        const selectedItemData = items.find(item => item.id === selectedItem)
         const quantityValue = parseFloat(quantity)
         
-        if (selectedItemData && quantityValue > selectedItemData.quantity) {
+        // Get opening stock for the date
+        const { data: openingStock } = await supabase
+          .from('opening_stock')
+          .select('quantity')
+          .eq('item_id', selectedItem)
+          .eq('date', date)
+          .single()
+
+        // Get total sales for the date so far (excluding current sale if editing)
+        const { data: existingSales } = await supabase
+          .from('sales')
+          .select('id, quantity')
+          .eq('item_id', selectedItem)
+          .eq('date', date)
+
+        const totalSalesSoFar = existingSales?.reduce((sum, s) => {
+          // Exclude the sale being edited
+          if (editingSale && s.id === editingSale.id) return sum
+          return sum + parseFloat(s.quantity.toString())
+        }, 0) || 0
+        
+        const openingQty = openingStock?.quantity || 0
+        const availableStock = openingQty - totalSalesSoFar
+        
+        if (quantityValue > availableStock) {
           setMessage({ 
             type: 'error', 
-            text: `Cannot record sales of ${quantityValue}. Available stock: ${selectedItemData.quantity} ${selectedItemData.unit}` 
+            text: `Cannot record sales of ${quantityValue}. Available stock: ${availableStock}` 
           })
           setLoading(false)
           return
@@ -128,6 +152,7 @@ export default function SalesForm() {
               quantity: parseFloat(quantity),
               price_per_unit: parseFloat(pricePerUnit) || 0,
               total_price: parseFloat(totalPrice) || 0,
+              payment_mode: paymentMode,
               date,
               description: description || null,
               old_quantity: editingSale.quantity,
@@ -151,6 +176,7 @@ export default function SalesForm() {
               quantity: parseFloat(quantity),
               price_per_unit: parseFloat(pricePerUnit) || 0,
               total_price: parseFloat(totalPrice) || 0,
+              payment_mode: paymentMode,
               date,
               description: description || null,
               user_id: user.id,
@@ -162,12 +188,13 @@ export default function SalesForm() {
           throw new Error(data.error || 'Failed to record sales')
         }
 
-        setMessage({ type: 'success', text: 'Sales recorded successfully! Item quantity updated.' })
+        setMessage({ type: 'success', text: 'Sales recorded successfully!' })
       }
 
       setQuantity('')
       setPricePerUnit('')
       setTotalPrice('')
+      setPaymentMode('cash')
       setDescription('')
       setSelectedItem('')
       setDate(format(new Date(), 'yyyy-MM-dd'))
@@ -187,6 +214,7 @@ export default function SalesForm() {
     setQuantity(sale.quantity.toString())
     setPricePerUnit(sale.price_per_unit.toString())
     setTotalPrice(sale.total_price.toString())
+    setPaymentMode(sale.payment_mode)
     setDate(sale.date)
     setDescription(sale.description || '')
   }
@@ -196,6 +224,7 @@ export default function SalesForm() {
     setQuantity('')
     setPricePerUnit('')
     setTotalPrice('')
+    setPaymentMode('cash')
     setDescription('')
     setSelectedItem('')
     setDate(format(new Date(), 'yyyy-MM-dd'))
@@ -302,7 +331,7 @@ export default function SalesForm() {
             <option value="">Select an item</option>
             {items.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name} ({item.unit}) - Available: {item.quantity}
+                {item.name} ({item.unit})
               </option>
             ))}
           </select>
@@ -329,11 +358,14 @@ export default function SalesForm() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder:text-black"
             placeholder="0"
           />
-          {selectedItem && (
-            <p className="mt-1 text-xs text-gray-500">
-              Available stock: {items.find(item => item.id === selectedItem)?.quantity || 0} {items.find(item => item.id === selectedItem)?.unit || ''}
-            </p>
-          )}
+          {selectedItem && (() => {
+            const item = items.find(item => item.id === selectedItem)
+            return item && item.selling_price > 0 ? (
+              <p className="mt-1 text-xs text-gray-500">
+                Selling price: ₦{item.selling_price.toFixed(2)}/{item.unit}
+              </p>
+            ) : null
+          })()}
         </div>
 
         <div>
@@ -353,9 +385,9 @@ export default function SalesForm() {
           />
           {selectedItem && (() => {
             const item = items.find(item => item.id === selectedItem)
-            return item && item.price_per_unit > 0 ? (
+            return item && item.selling_price > 0 ? (
               <p className="mt-1 text-xs text-gray-500">
-                Default: ₦{item.price_per_unit.toFixed(2)}/{item.unit}
+                Default: ₦{item.selling_price.toFixed(2)}/{item.unit}
               </p>
             ) : null
           })()}
@@ -377,6 +409,22 @@ export default function SalesForm() {
             placeholder="0.00"
           />
           <p className="mt-1 text-xs text-gray-500">Calculated automatically, but can be edited if needed</p>
+        </div>
+
+        <div>
+          <label htmlFor="payment_mode" className="block text-sm font-medium text-gray-700 mb-1">
+            Payment Mode
+          </label>
+          <select
+            id="payment_mode"
+            value={paymentMode}
+            onChange={(e) => setPaymentMode(e.target.value as 'cash' | 'transfer')}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
+          >
+            <option value="cash">Cash</option>
+            <option value="transfer">Transfer</option>
+          </select>
         </div>
 
         <div>
@@ -426,6 +474,7 @@ export default function SalesForm() {
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Price/Unit</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total Price</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Payment Mode</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
                   {userRole === 'admin' && (
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
@@ -449,6 +498,15 @@ export default function SalesForm() {
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-gray-900">
                       ₦{sale.total_price.toFixed(2)}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        sale.payment_mode === 'cash' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-blue-100 text-blue-800'
+                      }`}>
+                        {sale.payment_mode === 'cash' ? 'Cash' : 'Transfer'}
+                      </span>
                     </td>
                     <td className="px-3 py-2 text-sm text-gray-900">
                       {sale.description || '-'}

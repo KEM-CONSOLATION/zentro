@@ -22,18 +22,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 })
     }
 
-    // Get current item quantity
-    const { data: item, error: itemError } = await supabaseAdmin
-      .from('items')
-      .select('quantity')
-      .eq('id', item_id)
-      .single()
-
-    if (itemError || !item) {
-      return NextResponse.json({ error: 'Item not found' }, { status: 404 })
-    }
-
-    // Delete sale record
+    // Delete sale record (DO NOT restore item quantity - opening stock stays constant)
     const { error: deleteError } = await supabaseAdmin
       .from('sales')
       .delete()
@@ -43,18 +32,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: deleteError.message }, { status: 500 })
     }
 
-    // Restore item quantity (add back the deleted sale quantity)
-    const newQuantity = item.quantity + parseFloat(quantity)
-    const { error: updateError } = await supabaseAdmin
-      .from('items')
-      .update({ quantity: newQuantity })
-      .eq('id', item_id)
-
-    if (updateError) {
-      return NextResponse.json({ error: 'Failed to update item quantity' }, { status: 500 })
-    }
-
-    return NextResponse.json({ success: true, updatedQuantity: newQuantity })
+    return NextResponse.json({ success: true })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to delete sales'
     return NextResponse.json({ error: errorMessage }, { status: 500 })
