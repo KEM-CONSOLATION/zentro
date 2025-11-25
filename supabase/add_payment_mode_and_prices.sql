@@ -9,10 +9,24 @@ ADD COLUMN IF NOT EXISTS cost_price DECIMAL(10, 2) NOT NULL DEFAULT 0;
 ALTER TABLE public.items 
 ADD COLUMN IF NOT EXISTS selling_price DECIMAL(10, 2) NOT NULL DEFAULT 0;
 
--- Migrate existing price_per_unit to selling_price
-UPDATE public.items 
-SET selling_price = price_per_unit 
-WHERE price_per_unit > 0 AND selling_price = 0;
+-- Migrate existing price_per_unit to selling_price if price_per_unit column exists
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 
+    FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'items' 
+    AND column_name = 'price_per_unit'
+  ) THEN
+    UPDATE public.items 
+    SET selling_price = price_per_unit 
+    WHERE price_per_unit > 0 AND selling_price = 0;
+    
+    -- Optionally drop price_per_unit after migration
+    -- ALTER TABLE public.items DROP COLUMN IF EXISTS price_per_unit;
+  END IF;
+END $$;
 
 -- Create expenses table
 CREATE TABLE IF NOT EXISTS public.expenses (
