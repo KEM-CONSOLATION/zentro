@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { Item, Sale, Profile } from '@/types/database'
+import { Item, Sale, Profile, ClosingStock, OpeningStock } from '@/types/database'
 import { format } from 'date-fns'
 
 // Component to display stock availability and closing stock for a specific date
@@ -156,6 +156,8 @@ function StockAvailabilityDisplay({
 export default function SalesForm() {
   const [items, setItems] = useState<Item[]>([])
   const [sales, setSales] = useState<(Sale & { item?: Item; recorded_by_profile?: Profile })[]>([])
+  const [closingStocks, setClosingStocks] = useState<(ClosingStock & { item?: Item })[]>([])
+  const [openingStocks, setOpeningStocks] = useState<(OpeningStock & { item?: Item })[]>([])
   const [selectedItem, setSelectedItem] = useState('')
   const [quantity, setQuantity] = useState('')
   const [pricePerUnit, setPricePerUnit] = useState('')
@@ -167,31 +169,56 @@ export default function SalesForm() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
   const [userRole, setUserRole] = useState<'admin' | 'staff' | null>(null)
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const isPastDate = date < today
 
   useEffect(() => {
     fetchItems()
     fetchSales()
     checkUserRole()
+    // Fetch closing stock and opening stock for past dates
+    if (isPastDate) {
+      fetchClosingStock()
+      fetchOpeningStock()
+    } else {
+      setClosingStocks([])
+      setOpeningStocks([])
+    }
     // Ensure date is always today for staff, but allow past dates for admins
-    const today = format(new Date(), 'yyyy-MM-dd')
     if (userRole === 'staff' && date !== today) {
       setDate(today)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date, userRole])
+  }, [date, userRole, isPastDate])
 
   // Calculate price when item or quantity changes
   useEffect(() => {
     if (selectedItem && quantity) {
-      const selectedItemData = items.find(item => item.id === selectedItem)
-      if (selectedItemData && selectedItemData.selling_price > 0) {
+      let price = 0
+      
+      if (isPastDate) {
+        // For past dates: use selling price from opening stock of that date
+        const openingStock = openingStocks.find(os => os.item_id === selectedItem)
+        if (openingStock && openingStock.selling_price) {
+          price = openingStock.selling_price
+        } else {
+          // Fallback to item's current selling price
+          const selectedItemData = items.find(item => item.id === selectedItem)
+          price = selectedItemData?.selling_price || 0
+        }
+      } else {
+        // For today: use item's current selling price
+        const selectedItemData = items.find(item => item.id === selectedItem)
+        price = selectedItemData?.selling_price || 0
+      }
+      
+      if (price > 0) {
         const qty = parseFloat(quantity) || 0
-        const price = selectedItemData.selling_price
         setPricePerUnit(price.toString())
         setTotalPrice((qty * price).toFixed(2))
       }
     }
-  }, [selectedItem, quantity, items])
+  }, [selectedItem, quantity, items, isPastDate, openingStocks])
 
   const checkUserRole = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -233,6 +260,46 @@ export default function SalesForm() {
 
     if (!error && data) {
       setSales(data)
+    }
+  }
+
+  const fetchClosingStock = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('closing_stock')
+        .select(`
+          *,
+          item:items(*)
+        `)
+        .eq('date', date)
+        .order('created_at', { ascending: false })
+
+      if (!error && data) {
+        setClosingStocks(data as (ClosingStock & { item?: Item })[])
+      }
+    } catch {
+      // Silently fail - closing stock might not exist for all dates
+      setClosingStocks([])
+    }
+  }
+
+  const fetchOpeningStock = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('opening_stock')
+        .select(`
+          *,
+          item:items(*)
+        `)
+        .eq('date', date)
+        .order('created_at', { ascending: false })
+
+      if (!error && data) {
+        setOpeningStocks(data as (OpeningStock & { item?: Item })[])
+      }
+    } catch {
+      // Silently fail - opening stock might not exist for all dates
+      setOpeningStocks([])
     }
   }
 
@@ -580,6 +647,7 @@ export default function SalesForm() {
         <div>
           <label htmlFor="item" className="block text-sm font-medium text-gray-700 mb-1">
             Item Used
+            {isPastDate && <span className="text-xs text-gray-500 ml-1">(From closing stock)</span>}
           </label>
           <select
             id="item"
@@ -589,19 +657,54 @@ export default function SalesForm() {
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
           >
             <option value="">Select an item</option>
-            {items.map((item) => {
-              const itemSales = sales.filter(s => s.item_id === item.id)
-              const totalSales = itemSales.reduce((sum, s) => sum + s.quantity, 0)
-              // Available = Current quantity - Sales already made today
-              const available = item.quantity - totalSales
-              
-              return (
-              <option key={item.id} value={item.id}>
-                  {item.name} ({item.unit}) - Available: {available > 0 ? available : 0}
-              </option>
-              )
-            })}
+            {isPastDate ? (
+              // For past dates: show items from closing stock
+              closingStocks.map((closingStock) => {
+                const item = closingStock.item
+                if (!item) return null
+                
+                const itemSales = sales.filter(s => s.item_id === item.id)
+                const totalSales = itemSales.reduce((sum, s) => {
+                  // Exclude the sale being edited from total
+                  if (editingSale && s.id === editingSale.id) return sum
+                  return sum + s.quantity
+                }, 0)
+                
+                // Available = Closing stock quantity - Sales already made for that date
+                const closingQty = parseFloat(closingStock.quantity.toString())
+                const available = closingQty - totalSales
+                
+                return (
+                  <option key={item.id} value={item.id}>
+                    {item.name} ({item.unit}) - Available: {available > 0 ? available : 0} (from closing stock: {closingQty})
+                  </option>
+                )
+              })
+            ) : (
+              // For today: show all items with current quantity
+              items.map((item) => {
+                const itemSales = sales.filter(s => s.item_id === item.id)
+                const totalSales = itemSales.reduce((sum, s) => {
+                  // Exclude the sale being edited from total
+                  if (editingSale && s.id === editingSale.id) return sum
+                  return sum + s.quantity
+                }, 0)
+                // Available = Current quantity - Sales already made today
+                const available = item.quantity - totalSales
+                
+                return (
+                  <option key={item.id} value={item.id}>
+                    {item.name} ({item.unit}) - Available: {available > 0 ? available : 0}
+                  </option>
+                )
+              })
+            )}
           </select>
+          {isPastDate && closingStocks.length === 0 && (
+            <p className="mt-1 text-xs text-red-500">
+              No closing stock found for this date. Please record closing stock first.
+            </p>
+          )}
         </div>
 
         <div>

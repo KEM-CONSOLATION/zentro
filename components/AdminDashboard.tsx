@@ -9,8 +9,26 @@ import UserManagement from './UserManagement'
 import MenuManagement from './MenuManagement'
 import RecipeManagement from './RecipeManagement'
 
+// Helper function to safely format date
+const formatDateSafely = (dateString: string): string => {
+  if (!dateString || !dateString.trim()) return 'N/A'
+  try {
+    const date = new Date(dateString + 'T00:00:00')
+    if (isNaN(date.getTime())) return 'Invalid Date'
+    return format(date, 'MMM dd, yyyy')
+  } catch {
+    return 'Invalid Date'
+  }
+}
+
 export default function AdminDashboard() {
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const [selectedDate, setSelectedDate] = useState(() => {
+    try {
+      return format(new Date(), 'yyyy-MM-dd')
+    } catch {
+      return new Date().toISOString().split('T')[0]
+    }
+  })
   const [openingStocks, setOpeningStocks] = useState<(OpeningStock & { item: Item; recorded_by_profile: Profile })[]>([])
   const [closingStocks, setClosingStocks] = useState<(ClosingStock & { item: Item; recorded_by_profile: Profile })[]>([])
   const [sales, setSales] = useState<(Sale & { item: Item; recorded_by_profile: Profile })[]>([])
@@ -150,7 +168,7 @@ export default function AdminDashboard() {
               <div className="bg-white shadow-sm rounded-lg border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-gray-900">
-                    Opening Stock - {format(new Date(selectedDate), 'MMM dd, yyyy')}
+                    Opening Stock - {formatDateSafely(selectedDate)}
                   </h2>
                   <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
                     {openingStocks.length} {openingStocks.length === 1 ? 'record' : 'records'}
@@ -207,7 +225,7 @@ export default function AdminDashboard() {
               <div className="bg-white shadow-sm rounded-lg border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-gray-900">
-                    Closing Stock - {format(new Date(selectedDate), 'MMM dd, yyyy')}
+                    Closing Stock - {formatDateSafely(selectedDate)}
                   </h2>
                   <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
                     {closingStocks.length} {closingStocks.length === 1 ? 'record' : 'records'}
@@ -264,7 +282,7 @@ export default function AdminDashboard() {
               <div className="bg-white shadow-sm rounded-lg border border-gray-200 p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-xl font-semibold text-gray-900">
-                    Sales/Usage - {format(new Date(selectedDate), 'MMM dd, yyyy')}
+                    Sales/Usage - {formatDateSafely(selectedDate)}
                   </h2>
                   <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
                     {sales.length} {sales.length === 1 ? 'record' : 'records'}

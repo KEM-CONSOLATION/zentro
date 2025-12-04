@@ -4,6 +4,18 @@ import { useState, useEffect } from 'react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase/client'
 
+// Helper function to safely format date
+const formatDateSafely = (dateString: string): string => {
+  if (!dateString || !dateString.trim()) return 'N/A'
+  try {
+    const date = new Date(dateString + 'T00:00:00')
+    if (isNaN(date.getTime())) return 'Invalid Date'
+    return format(date, 'MMM dd, yyyy')
+  } catch {
+    return 'Invalid Date'
+  }
+}
+
 interface StockReportItem {
   item_id: string
   item_name: string
@@ -34,7 +46,13 @@ interface StockReport {
 
 export default function DailyStockReport({ type }: { type: 'opening' | 'closing' }) {
   const today = format(new Date(), 'yyyy-MM-dd')
-  const [selectedDate, setSelectedDate] = useState(today)
+  const [selectedDate, setSelectedDate] = useState(() => {
+    try {
+      return format(new Date(), 'yyyy-MM-dd')
+    } catch {
+      return new Date().toISOString().split('T')[0]
+    }
+  })
   const [report, setReport] = useState<StockReport | null>(null)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -232,7 +250,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
       if (result.success) {
         setEditingItems({})
         await fetchReport()
-        alert(`Successfully saved ${type === 'opening' ? 'opening' : 'closing'} stock for ${format(new Date(selectedDate), 'MMM dd, yyyy')}`)
+        alert(`Successfully saved ${type === 'opening' ? 'opening' : 'closing'} stock for ${formatDateSafely(selectedDate)}`)
       } else {
         alert(`Error: ${result.error || 'Failed to save stock'}`)
       }
@@ -314,11 +332,11 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
         <div className="bg-white shadow-sm rounded-lg border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
             <h2 className="text-lg font-semibold text-gray-900">
-              {type === 'opening' ? 'Opening Stock' : 'Closing Stock'} - {format(new Date(selectedDate), 'MMM dd, yyyy')}
+              {type === 'opening' ? 'Opening Stock' : 'Closing Stock'} - {formatDateSafely(selectedDate)}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
               {isPastDate
-                ? `Manual entry mode for ${format(new Date(selectedDate), 'MMM dd, yyyy')}. Enter values and click Save.`
+                ? `Manual entry mode for ${formatDateSafely(selectedDate)}. Enter values and click Save.`
                 : type === 'opening'
                 ? 'Automatically calculated from previous day\'s closing stock. If no closing stock exists, falls back to item\'s current quantity.'
                 : 'Automatically calculated: Opening Stock + Restocking - Sales - Waste/Spoilage'}
