@@ -5,6 +5,85 @@ import { supabase } from '@/lib/supabase/client'
 import { Item, Sale, Profile } from '@/types/database'
 import { format } from 'date-fns'
 
+// Component to display stock availability for a specific date
+function StockAvailabilityDisplay({ 
+  itemId, 
+  date, 
+  sales, 
+  editingSale, 
+  item 
+}: { 
+  itemId: string
+  date: string
+  sales: (Sale & { item?: Item })[]
+  editingSale: Sale | null
+  item: Item
+}) {
+  const [availableStock, setAvailableStock] = useState<number | null>(null)
+  const [stockInfo, setStockInfo] = useState<string>('')
+  const [loading, setLoading] = useState(true)
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const isPastDate = date < today
+
+  useEffect(() => {
+    const calculateAvailability = async () => {
+      setLoading(true)
+      try {
+        const itemSales = sales.filter(s => s.item_id === itemId && s.date === date)
+        const totalSales = itemSales.reduce((sum, s) => {
+          if (editingSale && s.id === editingSale.id) return sum
+          return sum + s.quantity
+        }, 0)
+
+        if (isPastDate) {
+          // For past dates: Opening Stock + Restocking - Sales
+          const { data: openingStock } = await supabase
+            .from('opening_stock')
+            .select('quantity')
+            .eq('item_id', itemId)
+            .eq('date', date)
+            .single()
+
+          const { data: restocking } = await supabase
+            .from('restocking')
+            .select('quantity')
+            .eq('item_id', itemId)
+            .eq('date', date)
+
+          const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
+          const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
+
+          const available = openingQty + totalRestocking - totalSales
+          setAvailableStock(available)
+          setStockInfo(`Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold: ${totalSales}`)
+        } else {
+          // For today: Current quantity - Sales
+          const available = item.quantity - totalSales
+          setAvailableStock(available)
+          setStockInfo(`Current: ${item.quantity}, Sold today: ${totalSales}`)
+        }
+      } catch {
+        setAvailableStock(null)
+        setStockInfo('Unable to calculate')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    calculateAvailability()
+  }, [itemId, date, sales, editingSale, item.quantity, isPastDate])
+
+  if (loading) {
+    return <p className="text-xs text-gray-500">Calculating availability...</p>
+  }
+
+  return (
+    <p className={`text-xs ${availableStock !== null && availableStock > 0 ? 'text-gray-500' : 'text-red-600'}`}>
+      Available stock: {availableStock !== null && availableStock > 0 ? availableStock : 0} {item.unit} ({stockInfo})
+    </p>
+  )
+}
+
 export default function SalesForm() {
   const [items, setItems] = useState<Item[]>([])
   const [sales, setSales] = useState<(Sale & { item?: Item; recorded_by_profile?: Profile })[]>([])
@@ -154,9 +233,42 @@ export default function SalesForm() {
         const today = format(new Date(), 'yyyy-MM-dd')
         const isPastDate = date < today
         
-        // For past dates (admin only), skip stock availability check
-        // For today's date, check stock availability
-        if (!isPastDate) {
+        // Calculate available stock based on the selected date
+        let availableStock = 0
+        let stockInfo = ''
+        
+        if (isPastDate) {
+          // For past dates: Opening Stock + Restocking - Sales already recorded
+          const { data: openingStock } = await supabase
+            .from('opening_stock')
+            .select('quantity')
+            .eq('item_id', selectedItem)
+            .eq('date', date)
+            .single()
+
+          const { data: restocking } = await supabase
+            .from('restocking')
+            .select('quantity')
+            .eq('item_id', selectedItem)
+            .eq('date', date)
+
+          const { data: existingSales } = await supabase
+            .from('sales')
+            .select('id, quantity')
+            .eq('item_id', selectedItem)
+            .eq('date', date)
+
+          const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
+          const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
+          const totalSalesSoFar = existingSales?.reduce((sum, s) => {
+            if (editingSale && s.id === editingSale.id) return sum
+            return sum + parseFloat(s.quantity.toString())
+          }, 0) || 0
+
+          availableStock = openingQty + totalRestocking - totalSalesSoFar
+          stockInfo = `Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold: ${totalSalesSoFar}`
+        } else {
+          // For today: Current quantity - Sales already made today
           const { data: existingSales } = await supabase
             .from('sales')
             .select('id, quantity')
@@ -168,16 +280,26 @@ export default function SalesForm() {
             return sum + parseFloat(s.quantity.toString())
           }, 0) || 0
           
-          const availableStock = freshItem.quantity - totalSalesSoFar
-          
-          if (availableStock <= 0) {
-            setMessage({ 
-              type: 'error', 
-              text: `No available stock. Current quantity: ${freshItem.quantity}, Already sold today: ${totalSalesSoFar}` 
-            })
-            setLoading(false)
-            return
-          }
+          availableStock = freshItem.quantity - totalSalesSoFar
+          stockInfo = `Current: ${freshItem.quantity}, Sold today: ${totalSalesSoFar}`
+        }
+        
+        if (availableStock <= 0) {
+          setMessage({ 
+            type: 'error', 
+            text: `No available stock for ${date}. ${stockInfo}` 
+          })
+          setLoading(false)
+          return
+        }
+
+        if (quantityValue > availableStock) {
+          setMessage({ 
+            type: 'error', 
+            text: `Cannot record sales of ${quantityValue}. Available stock: ${availableStock} (${stockInfo})` 
+          })
+          setLoading(false)
+          return
         }
       }
 
@@ -429,20 +551,7 @@ export default function SalesForm() {
             placeholder="0"
           />
           {selectedItem && (() => {
-            const today = format(new Date(), 'yyyy-MM-dd')
-            const itemSales = sales.filter(s => s.item_id === selectedItem && s.date === date)
-            const totalSales = itemSales.reduce((sum, s) => {
-              // Exclude the sale being edited from the total
-              if (editingSale && s.id === editingSale.id) return sum
-              return sum + s.quantity
-            }, 0)
             const item = items.find(item => item.id === selectedItem)
-            
-            // For past dates, we can't accurately calculate available stock without opening stock data
-            // So we'll just show the sales for that date
-            const isPastDate = date < today
-            const available = isPastDate ? null : (item?.quantity || 0) - totalSales
-            
             if (!item) return null
             
             return (
@@ -452,16 +561,13 @@ export default function SalesForm() {
                     Selling price: ₦{item.selling_price.toFixed(2)}/{item.unit}
                   </p>
                 )}
-                {isPastDate ? (
-                  <p className="text-xs text-gray-500">
-                    Sales recorded for {date}: {totalSales} {item.unit}
-                    {userRole === 'admin' && ' (Past date - stock availability not calculated)'}
-                  </p>
-                ) : (
-                  <p className={`text-xs ${available !== null && available > 0 ? 'text-gray-500' : 'text-red-600'}`}>
-                    Available stock: {available !== null && available > 0 ? available : 0} {item.unit} (Current: {item.quantity}, Sold today: {totalSales})
-                  </p>
-                )}
+                <StockAvailabilityDisplay 
+                  itemId={selectedItem}
+                  date={date}
+                  sales={sales}
+                  editingSale={editingSale}
+                  item={item}
+                />
               </div>
             )
           })()}

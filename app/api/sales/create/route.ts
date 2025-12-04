@@ -20,39 +20,74 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Get item's current quantity (total stock)
-    const { data: item, error: itemError } = await supabaseAdmin
-      .from('items')
-      .select('quantity')
-      .eq('id', item_id)
-      .single()
+    // Check if this is a past date
+    const today = new Date().toISOString().split('T')[0]
+    const isPastDate = date < today
 
-    if (itemError || !item) {
-      return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+    let availableStock = 0
+    let stockInfo = ''
+
+    if (isPastDate) {
+      // For past dates: Opening Stock + Restocking - Sales already recorded
+      const { data: openingStock } = await supabaseAdmin
+        .from('opening_stock')
+        .select('quantity')
+        .eq('item_id', item_id)
+        .eq('date', date)
+        .single()
+
+      const { data: restocking } = await supabaseAdmin
+        .from('restocking')
+        .select('quantity')
+        .eq('item_id', item_id)
+        .eq('date', date)
+
+      const { data: existingSales } = await supabaseAdmin
+        .from('sales')
+        .select('quantity')
+        .eq('item_id', item_id)
+        .eq('date', date)
+
+      const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
+      const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
+      const totalSalesSoFar = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
+
+      availableStock = openingQty + totalRestocking - totalSalesSoFar
+      stockInfo = `Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold: ${totalSalesSoFar}`
+    } else {
+      // For today: Current quantity - Sales already made today
+      const { data: item, error: itemError } = await supabaseAdmin
+        .from('items')
+        .select('quantity')
+        .eq('id', item_id)
+        .single()
+
+      if (itemError || !item) {
+        return NextResponse.json({ error: 'Item not found' }, { status: 404 })
+      }
+
+      const { data: existingSales } = await supabaseAdmin
+        .from('sales')
+        .select('quantity')
+        .eq('item_id', item_id)
+        .eq('date', date)
+
+      const totalSalesSoFar = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
+
+      availableStock = item.quantity - totalSalesSoFar
+      stockInfo = `Current: ${item.quantity}, Sold today: ${totalSalesSoFar}`
     }
-
-    // Get total sales for the date so far
-    const { data: existingSales } = await supabaseAdmin
-      .from('sales')
-      .select('quantity')
-      .eq('item_id', item_id)
-      .eq('date', date)
-
-    const totalSalesSoFar = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
-
-    // Available stock = Item's current quantity - Sales already made today
-    const availableStock = item.quantity - totalSalesSoFar
 
     if (availableStock <= 0) {
       return NextResponse.json(
-        { error: `No available stock. Current quantity: ${item.quantity}, Already sold today: ${totalSalesSoFar}` },
+        { error: `No available stock for ${date}. ${stockInfo}` },
         { status: 400 }
       )
     }
 
     if (parseFloat(quantity) > availableStock) {
       return NextResponse.json(
-        { error: `Cannot record sales of ${quantity}. Available stock: ${availableStock} (Current quantity: ${item.quantity}, Already sold: ${totalSalesSoFar})` },
+        { error: `Cannot record sales of ${quantity}. Available stock: ${availableStock} (${stockInfo})` },
         { status: 400 }
       )
     }
