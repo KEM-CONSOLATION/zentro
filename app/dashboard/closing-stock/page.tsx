@@ -24,6 +24,11 @@ export default async function ClosingStockPage() {
     redirect('/login?error=unauthorized')
   }
 
+  // Restrict closing stock to admins only
+  if (profile.role !== 'admin') {
+    redirect('/dashboard?error=unauthorized')
+  }
+
   return (
     <DashboardLayout user={profile}>
       <div>

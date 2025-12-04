@@ -40,7 +40,25 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
   const [saving, setSaving] = useState(false)
   const [editingItems, setEditingItems] = useState<Record<string, EditingItemData>>({})
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [userRole, setUserRole] = useState<'admin' | 'staff' | null>(null)
   const isPastDate = selectedDate < today
+
+  useEffect(() => {
+    const checkUserRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        if (profile) {
+          setUserRole(profile.role)
+        }
+      }
+    }
+    checkUserRole()
+  }, [])
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -155,6 +173,12 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
   const handleManualSave = async () => {
     if (!report) return
 
+    // Only admins can save stock
+    if (userRole !== 'admin') {
+      alert('Only administrators can record opening and closing stock.')
+      return
+    }
+
     setSaving(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -251,7 +275,10 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-gray-900 cursor-pointer"
+              disabled={userRole !== 'admin'}
+              className={`px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-gray-900 ${
+                userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : 'cursor-pointer'
+              }`}
             />
           </div>
           <div className="text-right">
@@ -374,7 +401,10 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                                 min="0"
                                 value={editingItems[item.item_id]?.quantity ?? item.opening_stock}
                                 onChange={(e) => handleValueChange(item.item_id, 'quantity', e.target.value)}
-                                className="w-24 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                                disabled={userRole !== 'admin'}
+                                className={`w-24 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
+                                  userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
+                                }`}
                               />
                               <span className="text-gray-500">{item.item_unit}</span>
                               {item.opening_stock_manual && (
@@ -408,7 +438,10 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                                 }
                                 onChange={(e) => handleValueChange(item.item_id, 'cost_price', e.target.value)}
                                 placeholder="0.00"
-                                className="w-28 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                                disabled={userRole !== 'admin'}
+                                className={`w-28 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
+                                  userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
+                                }`}
                               />
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
@@ -423,7 +456,10 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                                 }
                                 onChange={(e) => handleValueChange(item.item_id, 'selling_price', e.target.value)}
                                 placeholder="0.00"
-                                className="w-28 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                                disabled={userRole !== 'admin'}
+                                className={`w-28 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
+                                  userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
+                                }`}
                               />
                             </td>
                           </>
@@ -454,9 +490,12 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                                 type="number"
                                 step="0.01"
                                 min="0"
-                                value={editingItems[item.item_id] ?? item.closing_stock}
-                                onChange={(e) => handleValueChange(item.item_id, e.target.value)}
-                                className="w-24 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                                value={editingItems[item.item_id]?.quantity ?? item.closing_stock}
+                                onChange={(e) => handleValueChange(item.item_id, 'quantity', e.target.value)}
+                                disabled={userRole !== 'admin'}
+                                className={`w-24 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
+                                  userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
+                                }`}
                               />
                               <span className="text-gray-500">{item.item_unit}</span>
                               {item.closing_stock_manual && (
@@ -479,13 +518,17 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
           </div>
           {isPastDate && (
             <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
-              <button
-                onClick={handleManualSave}
-                disabled={saving || Object.keys(editingItems).length === 0}
-                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                {saving ? 'Saving...' : `Save ${type === 'opening' ? 'Opening' : 'Closing'} Stock`}
-              </button>
+              {userRole === 'admin' ? (
+                <button
+                  onClick={handleManualSave}
+                  disabled={saving || Object.keys(editingItems).length === 0}
+                  className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {saving ? 'Saving...' : `Save ${type === 'opening' ? 'Opening' : 'Closing'} Stock`}
+                </button>
+              ) : (
+                <p className="text-sm text-gray-500 italic">Only administrators can record opening and closing stock.</p>
+              )}
             </div>
           )}
         </div>

@@ -23,9 +23,13 @@ export default function RestockingForm() {
     fetchItems()
     fetchRestockings()
     checkUserRole()
-    // Ensure date is always today
-    setDate(format(new Date(), 'yyyy-MM-dd'))
-  }, [])
+    // Ensure date is always today for staff, but allow past dates for admins
+    const today = format(new Date(), 'yyyy-MM-dd')
+    if (userRole === 'staff') {
+      setDate(today)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userRole])
 
   useEffect(() => {
     if (selectedItem && date) {
@@ -129,11 +133,19 @@ export default function RestockingForm() {
 
       if (!user) throw new Error('Not authenticated')
 
-      // Validate date is today only
+      // Restrict restocking to today only for staff, allow past dates for admins
       const today = format(new Date(), 'yyyy-MM-dd')
-      if (date !== today) {
+      if (userRole !== 'admin' && date !== today) {
         setMessage({ type: 'error', text: 'Restocking can only be recorded for today\'s date. Please use today\'s date.' })
         setDate(today) // Reset to today
+        setLoading(false)
+        return
+      }
+      
+      // Prevent future dates for everyone
+      if (date > today) {
+        setMessage({ type: 'error', text: 'Cannot record restocking for future dates.' })
+        setDate(today)
         setLoading(false)
         return
       }
@@ -197,15 +209,15 @@ export default function RestockingForm() {
 
   const handleEdit = (restocking: Restocking) => {
     const today = format(new Date(), 'yyyy-MM-dd')
-    // Only allow editing if it's today's restocking
-    if (restocking.date !== today) {
+    // Only allow editing today's restocking for staff, but allow past dates for admins
+    if (userRole !== 'admin' && restocking.date !== today) {
       setMessage({ type: 'error', text: 'Can only edit restocking records for today. Past dates cannot be modified.' })
       return
     }
     setEditingRestocking(restocking)
     setSelectedItem(restocking.item_id)
     setQuantity(restocking.quantity.toString())
-    setDate(today) // Always use today's date
+    setDate(restocking.date) // Use the restocking's date (allows past dates for admins)
     setNotes(restocking.notes || '')
   }
 
@@ -255,7 +267,8 @@ export default function RestockingForm() {
 
         <div>
           <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-            Date <span className="text-xs text-gray-500">(Today only)</span>
+            Date {userRole !== 'admin' && <span className="text-xs text-gray-500">(Today only)</span>}
+            {userRole === 'admin' && <span className="text-xs text-gray-500">(Admin: Can select past dates)</span>}
           </label>
           <input
             id="date"
@@ -264,20 +277,37 @@ export default function RestockingForm() {
             onChange={(e) => {
               const selectedDate = e.target.value
               const today = format(new Date(), 'yyyy-MM-dd')
-              if (selectedDate !== today) {
+              
+              // Staff can only use today's date
+              if (userRole !== 'admin' && selectedDate !== today) {
                 setMessage({ type: 'error', text: 'Restocking can only be recorded for today\'s date.' })
                 setDate(today)
-              } else {
-                setDate(selectedDate)
+                return
               }
+              
+              // Prevent future dates for everyone
+              if (selectedDate > today) {
+                setMessage({ type: 'error', text: 'Cannot record restocking for future dates.' })
+                setDate(today)
+                return
+              }
+              
+              setDate(selectedDate)
+              setMessage(null) // Clear any previous messages
             }}
             max={format(new Date(), 'yyyy-MM-dd')}
-            min={format(new Date(), 'yyyy-MM-dd')}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 bg-gray-50 cursor-not-allowed"
-            readOnly
+            disabled={userRole !== 'admin'}
+            className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
+              userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
+            }`}
+            readOnly={userRole !== 'admin'}
           />
-          <p className="mt-1 text-xs text-gray-500">Restocking can only be recorded for today to avoid confusion</p>
+          <p className="mt-1 text-xs text-gray-500">
+            {userRole === 'admin' 
+              ? 'Admins can record restocking for past dates to backfill data. Staff can only record for today.' 
+              : 'Restocking can only be recorded for today to avoid confusion'}
+          </p>
         </div>
 
         <div>
@@ -394,24 +424,18 @@ export default function RestockingForm() {
                     </td>
                     {userRole === 'admin' && (
                       <td className="px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
-                        {restocking.date === format(new Date(), 'yyyy-MM-dd') ? (
-                          <>
-                            <button
-                              onClick={() => handleEdit(restocking)}
-                              className="text-indigo-600 hover:text-indigo-900 mr-3 cursor-pointer"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDelete(restocking.id)}
-                              className="text-red-600 hover:text-red-900 cursor-pointer"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-400">Past date</span>
-                        )}
+                        <button
+                          onClick={() => handleEdit(restocking)}
+                          className="text-indigo-600 hover:text-indigo-900 mr-3 cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(restocking.id)}
+                          className="text-red-600 hover:text-red-900 cursor-pointer"
+                        >
+                          Delete
+                        </button>
                       </td>
                     )}
                   </tr>

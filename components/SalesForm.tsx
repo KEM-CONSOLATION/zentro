@@ -24,13 +24,13 @@ export default function SalesForm() {
     fetchItems()
     fetchSales()
     checkUserRole()
-    // Ensure date is always today
+    // Ensure date is always today for staff, but allow past dates for admins
     const today = format(new Date(), 'yyyy-MM-dd')
-    if (date !== today) {
+    if (userRole === 'staff' && date !== today) {
       setDate(today)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date])
+  }, [date, userRole])
 
   // Calculate price when item or quantity changes
   useEffect(() => {
@@ -67,7 +67,7 @@ export default function SalesForm() {
       } else {
         setItems(data || [])
       }
-    } catch (error) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to fetch items. Please refresh the page.' })
     }
   }
@@ -101,14 +101,25 @@ export default function SalesForm() {
 
       if (!user) throw new Error('Not authenticated')
 
-      // Restrict sales to today only (for everyone - admin and staff)
+      // Restrict sales to today only for staff, allow past dates for admins
       const today = format(new Date(), 'yyyy-MM-dd')
-      if (date !== today) {
+      if (userRole !== 'admin' && date !== today) {
         setMessage({ 
           type: 'error', 
-          text: 'Sales can only be recorded for today\'s date to avoid confusion. Please use today\'s date.' 
+          text: 'Sales can only be recorded for today\'s date. Please use today\'s date.' 
         })
         setDate(today) // Reset to today
+        setLoading(false)
+        return
+      }
+      
+      // Prevent future dates for everyone
+      if (date > today) {
+        setMessage({ 
+          type: 'error', 
+          text: 'Cannot record sales for future dates.' 
+        })
+        setDate(today)
         setLoading(false)
         return
       }
@@ -140,35 +151,33 @@ export default function SalesForm() {
           return
         }
 
-        const { data: existingSales } = await supabase
-          .from('sales')
-          .select('id, quantity')
-          .eq('item_id', selectedItem)
-          .eq('date', date)
+        const today = format(new Date(), 'yyyy-MM-dd')
+        const isPastDate = date < today
+        
+        // For past dates (admin only), skip stock availability check
+        // For today's date, check stock availability
+        if (!isPastDate) {
+          const { data: existingSales } = await supabase
+            .from('sales')
+            .select('id, quantity')
+            .eq('item_id', selectedItem)
+            .eq('date', date)
 
-        const totalSalesSoFar = existingSales?.reduce((sum, s) => {
-          if (editingSale && s.id === editingSale.id) return sum
-          return sum + parseFloat(s.quantity.toString())
-        }, 0) || 0
-        
-        const availableStock = freshItem.quantity - totalSalesSoFar
-        
-        if (availableStock <= 0) {
-          setMessage({ 
-            type: 'error', 
-            text: `No available stock. Current quantity: ${freshItem.quantity}, Already sold today: ${totalSalesSoFar}` 
-          })
-          setLoading(false)
-          return
-        }
-        
-        if (quantityValue > availableStock) {
-          setMessage({ 
-            type: 'error', 
-            text: `Cannot record sales of ${quantityValue}. Available stock: ${availableStock} (Current quantity: ${freshItem.quantity}, Already sold: ${totalSalesSoFar})` 
-          })
-          setLoading(false)
-          return
+          const totalSalesSoFar = existingSales?.reduce((sum, s) => {
+            if (editingSale && s.id === editingSale.id) return sum
+            return sum + parseFloat(s.quantity.toString())
+          }, 0) || 0
+          
+          const availableStock = freshItem.quantity - totalSalesSoFar
+          
+          if (availableStock <= 0) {
+            setMessage({ 
+              type: 'error', 
+              text: `No available stock. Current quantity: ${freshItem.quantity}, Already sold today: ${totalSalesSoFar}` 
+            })
+            setLoading(false)
+            return
+          }
         }
       }
 
@@ -334,7 +343,8 @@ export default function SalesForm() {
 
         <div>
           <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-            Date <span className="text-xs text-gray-500">(Today only)</span>
+            Date {userRole !== 'admin' && <span className="text-xs text-gray-500">(Today only)</span>}
+            {userRole === 'admin' && <span className="text-xs text-gray-500">(Admin: Can select past dates)</span>}
           </label>
           <input
             id="date"
@@ -343,20 +353,37 @@ export default function SalesForm() {
             onChange={(e) => {
               const selectedDate = e.target.value
               const today = format(new Date(), 'yyyy-MM-dd')
-              if (selectedDate !== today) {
+              
+              // Staff can only use today's date
+              if (userRole !== 'admin' && selectedDate !== today) {
                 setMessage({ type: 'error', text: 'Sales can only be recorded for today\'s date.' })
                 setDate(today)
-              } else {
-                setDate(selectedDate)
+                return
               }
+              
+              // Prevent future dates for everyone
+              if (selectedDate > today) {
+                setMessage({ type: 'error', text: 'Cannot record sales for future dates.' })
+                setDate(today)
+                return
+              }
+              
+              setDate(selectedDate)
+              setMessage(null) // Clear any previous messages
             }}
             max={format(new Date(), 'yyyy-MM-dd')}
-            min={format(new Date(), 'yyyy-MM-dd')}
             required
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 bg-gray-50 cursor-not-allowed"
-            readOnly
+            disabled={userRole !== 'admin'}
+            className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
+              userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
+            }`}
+            readOnly={userRole !== 'admin'}
           />
-          <p className="mt-1 text-xs text-gray-500">Sales can only be recorded for today to avoid confusion</p>
+          <p className="mt-1 text-xs text-gray-500">
+            {userRole === 'admin' 
+              ? 'Admins can record sales for past dates to backfill data. Staff can only record for today.' 
+              : 'Sales can only be recorded for today to avoid confusion'}
+          </p>
         </div>
 
         <div>
@@ -402,10 +429,19 @@ export default function SalesForm() {
             placeholder="0"
           />
           {selectedItem && (() => {
-            const itemSales = sales.filter(s => s.item_id === selectedItem)
-            const totalSales = itemSales.reduce((sum, s) => sum + s.quantity, 0)
+            const today = format(new Date(), 'yyyy-MM-dd')
+            const itemSales = sales.filter(s => s.item_id === selectedItem && s.date === date)
+            const totalSales = itemSales.reduce((sum, s) => {
+              // Exclude the sale being edited from the total
+              if (editingSale && s.id === editingSale.id) return sum
+              return sum + s.quantity
+            }, 0)
             const item = items.find(item => item.id === selectedItem)
-            const available = (item?.quantity || 0) - totalSales
+            
+            // For past dates, we can't accurately calculate available stock without opening stock data
+            // So we'll just show the sales for that date
+            const isPastDate = date < today
+            const available = isPastDate ? null : (item?.quantity || 0) - totalSales
             
             if (!item) return null
             
@@ -416,9 +452,16 @@ export default function SalesForm() {
                     Selling price: ₦{item.selling_price.toFixed(2)}/{item.unit}
                   </p>
                 )}
-                <p className={`text-xs ${available > 0 ? 'text-gray-500' : 'text-red-600'}`}>
-                  Available stock: {available > 0 ? available : 0} {item.unit} (Current: {item.quantity}, Sold today: {totalSales})
-                </p>
+                {isPastDate ? (
+                  <p className="text-xs text-gray-500">
+                    Sales recorded for {date}: {totalSales} {item.unit}
+                    {userRole === 'admin' && ' (Past date - stock availability not calculated)'}
+                  </p>
+                ) : (
+                  <p className={`text-xs ${available !== null && available > 0 ? 'text-gray-500' : 'text-red-600'}`}>
+                    Available stock: {available !== null && available > 0 ? available : 0} {item.unit} (Current: {item.quantity}, Sold today: {totalSales})
+                  </p>
+                )}
               </div>
             )
           })()}
@@ -569,24 +612,18 @@ export default function SalesForm() {
                     </td>
                     {userRole === 'admin' && (
                       <td className="px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
-                        {sale.date === format(new Date(), 'yyyy-MM-dd') ? (
-                          <>
-                            <button
-                              onClick={() => handleEdit(sale)}
-                              className="text-indigo-600 hover:text-indigo-900 mr-3 cursor-pointer"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleDelete(sale.id)}
-                              className="text-red-600 hover:text-red-900 cursor-pointer"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        ) : (
-                          <span className="text-xs text-gray-400">Past date</span>
-                        )}
+                        <button
+                          onClick={() => handleEdit(sale)}
+                          className="text-indigo-600 hover:text-indigo-900 mr-3 cursor-pointer"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(sale.id)}
+                          className="text-red-600 hover:text-red-900 cursor-pointer"
+                        >
+                          Delete
+                        </button>
                       </td>
                     )}
                   </tr>
