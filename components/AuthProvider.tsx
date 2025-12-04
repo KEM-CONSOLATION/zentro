@@ -4,8 +4,8 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 
-const INACTIVITY_TIMEOUT = 5 * 60 * 1000 // 5 minutes in milliseconds
-const WARNING_TIME = 30 * 1000 // Show warning 30 seconds before logout
+const INACTIVITY_TIMEOUT = 5 * 60 * 60 * 1000 // 5 hours in milliseconds
+const WARNING_TIME = 5 * 60 * 1000 // Show warning 5 minutes before logout
 
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -75,7 +75,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
         if (currentPath?.startsWith('/dashboard') || currentPath?.startsWith('/admin')) {
           lastActivityRef.current = Date.now()
           
-          // Set warning timer (30 seconds before logout)
+          // Set warning timer (5 minutes before logout)
           warningTimerRef.current = setTimeout(() => {
             setShowWarning(true)
           }, INACTIVITY_TIMEOUT - WARNING_TIME)
