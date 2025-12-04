@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { format, subDays } from 'date-fns'
+import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase/client'
 
 interface StockReportItem {
@@ -10,10 +10,13 @@ interface StockReportItem {
   item_unit: string
   current_quantity: number
   opening_stock: number
-  opening_stock_source?: 'previous_closing_stock' | 'item_quantity'
+  opening_stock_source?: 'previous_closing_stock' | 'item_quantity' | 'manual_entry'
   restocking?: number
   sales: number
+  waste_spoilage?: number
   closing_stock: number
+  opening_stock_manual?: boolean
+  closing_stock_manual?: boolean
 }
 
 interface StockReport {
@@ -22,10 +25,14 @@ interface StockReport {
 }
 
 export default function DailyStockReport({ type }: { type: 'opening' | 'closing' }) {
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const [selectedDate, setSelectedDate] = useState(today)
   const [report, setReport] = useState<StockReport | null>(null)
   const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [editingItems, setEditingItems] = useState<Record<string, number>>({})
   const [currentTime, setCurrentTime] = useState(new Date())
+  const isPastDate = selectedDate < today
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000)
@@ -34,6 +41,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
 
   useEffect(() => {
     fetchReport()
+    setEditingItems({}) // Reset editing state when date changes
   }, [selectedDate])
 
   const fetchReport = async () => {
@@ -44,14 +52,17 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
       if (data.success) {
         setReport(data)
         
-        // Auto-save closing stock if viewing closing stock report
-        if (type === 'closing') {
-          await autoSaveClosingStock()
-        }
-        
-        // Auto-create opening stock if viewing opening stock report
-        if (type === 'opening') {
-          await autoCreateOpeningStock()
+        // Only auto-save/auto-create for today's date
+        if (selectedDate === today) {
+          // Auto-save closing stock if viewing closing stock report
+          if (type === 'closing') {
+            await autoSaveClosingStock()
+          }
+          
+          // Auto-create opening stock if viewing opening stock report
+          if (type === 'opening') {
+            await autoCreateOpeningStock()
+          }
         }
       }
     } catch (error) {
@@ -132,6 +143,56 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
     }
   }
 
+  const handleManualSave = async () => {
+    if (!report) return
+
+    setSaving(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        alert('You must be logged in to save stock')
+        return
+      }
+
+      const itemsToSave = report.report.map((item) => ({
+        item_id: item.item_id,
+        quantity: editingItems[item.item_id] ?? (type === 'opening' ? item.opening_stock : item.closing_stock),
+      }))
+
+      const endpoint = type === 'opening' ? '/api/stock/manual-opening' : '/api/stock/manual-closing'
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          date: selectedDate,
+          items: itemsToSave,
+          user_id: user.id,
+        }),
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        setEditingItems({})
+        await fetchReport()
+        alert(`Successfully saved ${type === 'opening' ? 'opening' : 'closing'} stock for ${format(new Date(selectedDate), 'MMM dd, yyyy')}`)
+      } else {
+        alert(`Error: ${result.error || 'Failed to save stock'}`)
+      }
+    } catch (error) {
+      console.error('Manual save failed:', error)
+      alert('Failed to save stock. Please try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleValueChange = (itemId: string, value: string) => {
+    const numValue = parseFloat(value)
+    if (!isNaN(numValue) && numValue >= 0) {
+      setEditingItems((prev) => ({ ...prev, [itemId]: numValue }))
+    }
+  }
+
   const isOpeningTime = currentTime.getHours() >= 8
   const isClosingTime = currentTime.getHours() >= 0 && currentTime.getHours() < 8
 
@@ -182,10 +243,20 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
               {type === 'opening' ? 'Opening Stock' : 'Closing Stock'} - {format(new Date(selectedDate), 'MMM dd, yyyy')}
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              {type === 'opening'
+              {isPastDate
+                ? `Manual entry mode for ${format(new Date(selectedDate), 'MMM dd, yyyy')}. Enter values and click Save.`
+                : type === 'opening'
                 ? 'Automatically calculated from previous day\'s closing stock. If no closing stock exists, falls back to item\'s current quantity.'
-                : 'Automatically calculated: Opening Stock + Restocking - Sales'}
+                : 'Automatically calculated: Opening Stock + Restocking - Sales - Waste/Spoilage'}
             </p>
+            {isPastDate && (
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded">
+                <p className="text-sm text-blue-800">
+                  <strong>Past Date Entry:</strong> You can manually enter {type === 'opening' ? 'opening' : 'closing'} stock values for this date. 
+                  {type === 'closing' && ' The system will calculate based on opening stock + restocking - sales, but you can override with manual values.'}
+                </p>
+              </div>
+            )}
             {type === 'opening' && report.report.some(item => item.opening_stock_source === 'item_quantity') && (
               <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded">
                 <p className="text-sm text-yellow-800">
@@ -224,6 +295,9 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                         Sales/Usage
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Waste/Spoilage
+                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Closing Stock
                       </th>
                     </>
@@ -239,11 +313,32 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                     {type === 'opening' && (
                       <>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className="font-medium">{item.opening_stock}</span> {item.item_unit}
-                          {item.opening_stock_source === 'item_quantity' && (
-                            <span className="ml-2 text-xs text-yellow-600" title="Using item quantity because no closing stock found for previous day">
-                              ⚠
-                            </span>
+                          {isPastDate ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editingItems[item.item_id] ?? item.opening_stock}
+                                onChange={(e) => handleValueChange(item.item_id, e.target.value)}
+                                className="w-24 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                              />
+                              <span className="text-gray-500">{item.item_unit}</span>
+                              {item.opening_stock_manual && (
+                                <span className="text-xs text-blue-600" title="Manually entered">
+                                  ✏️
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <>
+                              <span className="font-medium">{item.opening_stock}</span> {item.item_unit}
+                              {item.opening_stock_source === 'item_quantity' && (
+                                <span className="ml-2 text-xs text-yellow-600" title="Using item quantity because no closing stock found for previous day">
+                                  ⚠
+                                </span>
+                              )}
+                            </>
                           )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -262,8 +357,31 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {item.sales} {item.item_unit}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600">
+                          <span className="font-medium">-{item.waste_spoilage || 0}</span> {item.item_unit}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                          <span className="font-medium">{item.closing_stock}</span> {item.item_unit}
+                          {isPastDate ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editingItems[item.item_id] ?? item.closing_stock}
+                                onChange={(e) => handleValueChange(item.item_id, e.target.value)}
+                                className="w-24 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900"
+                              />
+                              <span className="text-gray-500">{item.item_unit}</span>
+                              {item.closing_stock_manual && (
+                                <span className="text-xs text-blue-600" title="Manually entered">
+                                  ✏️
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="font-medium">{item.closing_stock}</span>
+                          )}
+                          {!isPastDate && <span className="ml-1">{item.item_unit}</span>}
                         </td>
                       </>
                     )}
@@ -272,6 +390,17 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
               </tbody>
             </table>
           </div>
+          {isPastDate && (
+            <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-end">
+              <button
+                onClick={handleManualSave}
+                disabled={saving || Object.keys(editingItems).length === 0}
+                className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {saving ? 'Saving...' : `Save ${type === 'opening' ? 'Opening' : 'Closing'} Stock`}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="bg-white shadow-sm rounded-lg border border-gray-200 p-12 text-center">

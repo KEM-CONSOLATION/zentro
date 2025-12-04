@@ -32,47 +32,75 @@ export async function GET(request: NextRequest) {
     prevDate.setDate(prevDate.getDate() - 1)
     const prevDateStr = prevDate.toISOString().split('T')[0]
 
+    // Get existing opening stock for this date (if manually entered)
+    const { data: existingOpeningStock } = await supabaseAdmin
+      .from('opening_stock')
+      .select('item_id, quantity')
+      .eq('date', date)
+
+    // Get existing closing stock for this date (if manually entered)
+    const { data: existingClosingStock } = await supabaseAdmin
+      .from('closing_stock')
+      .select('item_id, quantity')
+      .eq('date', date)
+
     // Get previous day's closing stock
     const { data: prevClosingStock, error: closingStockError } = await supabaseAdmin
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', prevDateStr)
 
-    // Log for debugging (remove in production if needed)
     if (closingStockError) {
-      console.error('Error fetching closing stock:', closingStockError)
+      // Error fetching previous closing stock - will fall back to item quantity
     }
 
-    // Get today's sales
-    const { data: todaySales } = await supabaseAdmin
+    // Get sales for this date
+    const { data: dateSales } = await supabaseAdmin
       .from('sales')
       .select('item_id, quantity')
       .eq('date', date)
 
-    // Get today's restocking
-    const { data: todayRestocking } = await supabaseAdmin
+    // Get restocking for this date
+    const { data: dateRestocking } = await supabaseAdmin
       .from('restocking')
+      .select('item_id, quantity')
+      .eq('date', date)
+
+    // Get waste/spoilage for this date
+    const { data: dateWasteSpoilage } = await supabaseAdmin
+      .from('waste_spoilage')
       .select('item_id, quantity')
       .eq('date', date)
 
     // Calculate opening and closing stock for each item
     const report = items.map((item) => {
-      // Opening stock = previous day's closing stock, or item's current quantity if no closing stock
+      // Opening stock: Use existing record if manually entered, otherwise previous day's closing stock, otherwise item quantity
+      const existingOpening = existingOpeningStock?.find((os) => os.item_id === item.id)
       const prevClosing = prevClosingStock?.find((cs) => cs.item_id === item.id)
-      // IMPORTANT: Use previous day's closing stock if it exists, otherwise fall back to item quantity
-      // This ensures continuity - today's opening stock = yesterday's closing stock
-      const openingStock = prevClosing ? parseFloat(prevClosing.quantity.toString()) : item.quantity
+      const openingStock = existingOpening
+        ? parseFloat(existingOpening.quantity.toString())
+        : prevClosing
+        ? parseFloat(prevClosing.quantity.toString())
+        : item.quantity
 
-      // Calculate total sales for today
-      const itemSales = todaySales?.filter((s) => s.item_id === item.id) || []
+      // Calculate total sales for this date
+      const itemSales = dateSales?.filter((s) => s.item_id === item.id) || []
       const totalSales = itemSales.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0)
 
-      // Calculate total restocking for today
-      const itemRestocking = todayRestocking?.filter((r) => r.item_id === item.id) || []
+      // Calculate total restocking for this date
+      const itemRestocking = dateRestocking?.filter((r) => r.item_id === item.id) || []
       const totalRestocking = itemRestocking.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0)
 
-      // Closing stock = opening stock + restocking - sales
-      const closingStock = Math.max(0, openingStock + totalRestocking - totalSales)
+      // Calculate total waste/spoilage for this date
+      const itemWasteSpoilage = dateWasteSpoilage?.filter((w) => w.item_id === item.id) || []
+      const totalWasteSpoilage = itemWasteSpoilage.reduce((sum, w) => sum + parseFloat(w.quantity.toString()), 0)
+
+      // Closing stock: Use existing record if manually entered, otherwise calculate
+      // Formula: Opening + Restocking - Sales - Waste/Spoilage
+      const existingClosing = existingClosingStock?.find((cs) => cs.item_id === item.id)
+      const closingStock = existingClosing
+        ? parseFloat(existingClosing.quantity.toString())
+        : Math.max(0, openingStock + totalRestocking - totalSales - totalWasteSpoilage)
 
       return {
         item_id: item.id,
@@ -80,10 +108,17 @@ export async function GET(request: NextRequest) {
         item_unit: item.unit,
         current_quantity: item.quantity,
         opening_stock: openingStock,
-        opening_stock_source: prevClosing ? 'previous_closing_stock' : 'item_quantity',
+        opening_stock_source: existingOpening
+          ? 'manual_entry'
+          : prevClosing
+          ? 'previous_closing_stock'
+          : 'item_quantity',
         restocking: totalRestocking,
         sales: totalSales,
+        waste_spoilage: totalWasteSpoilage,
         closing_stock: closingStock,
+        opening_stock_manual: !!existingOpening,
+        closing_stock_manual: !!existingClosing,
       }
     })
 

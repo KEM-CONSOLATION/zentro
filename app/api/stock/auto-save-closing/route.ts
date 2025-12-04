@@ -60,6 +60,12 @@ export async function POST(request: NextRequest) {
       .select('item_id, quantity')
       .eq('date', date)
 
+    // Get today's waste/spoilage
+    const { data: todayWasteSpoilage } = await supabaseAdmin
+      .from('waste_spoilage')
+      .select('item_id, quantity')
+      .eq('date', date)
+
     // Calculate and save closing stock for each item
     const closingStockRecords = items.map((item) => {
       // Determine opening stock: use today's opening stock if exists, otherwise previous closing stock, otherwise item quantity
@@ -79,15 +85,19 @@ export async function POST(request: NextRequest) {
       const itemRestocking = todayRestocking?.filter((r) => r.item_id === item.id) || []
       const totalRestocking = itemRestocking.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0)
 
-      // Calculate closing stock = opening stock + restocking - sales
-      const closingStock = Math.max(0, openingStock + totalRestocking - totalSales)
+      // Calculate total waste/spoilage for today
+      const itemWasteSpoilage = todayWasteSpoilage?.filter((w) => w.item_id === item.id) || []
+      const totalWasteSpoilage = itemWasteSpoilage.reduce((sum, w) => sum + parseFloat(w.quantity.toString()), 0)
+
+      // Calculate closing stock = opening stock + restocking - sales - waste/spoilage
+      const closingStock = Math.max(0, openingStock + totalRestocking - totalSales - totalWasteSpoilage)
 
       return {
         item_id: item.id,
         quantity: closingStock,
         date,
         recorded_by: user_id,
-        notes: `Auto-calculated: Opening (${openingStock}) + Restocking (${totalRestocking}) - Sales (${totalSales})`,
+        notes: `Auto-calculated: Opening (${openingStock}) + Restocking (${totalRestocking}) - Sales (${totalSales}) - Waste/Spoilage (${totalWasteSpoilage})`,
       }
     })
 

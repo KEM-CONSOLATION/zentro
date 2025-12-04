@@ -93,7 +93,8 @@ export default function RestockingForm() {
 
       setOpeningStock(openingQty)
       setCurrentTotal(current)
-    } catch {
+    } catch (error) {
+      // Fallback to 0 if calculation fails
       setOpeningStock(0)
       setCurrentTotal(0)
     }

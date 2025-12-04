@@ -29,11 +29,8 @@ export default function SalesForm() {
     if (date !== today) {
       setDate(today)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date])
-
-  useEffect(() => {
-    fetchItems()
-  }, [])
 
   // Calculate price when item or quantity changes
   useEffect(() => {

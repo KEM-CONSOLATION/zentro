@@ -109,3 +109,42 @@ export interface Restocking {
   recorded_by_profile?: Profile
 }
 
+export interface Recipe {
+  id: string
+  menu_item_id: string | null
+  name: string
+  description: string | null
+  serving_size: number
+  preparation_time: number | null
+  created_at: string
+  updated_at: string
+  menu_item?: MenuItem
+  ingredients?: RecipeIngredient[]
+}
+
+export interface RecipeIngredient {
+  id: string
+  recipe_id: string
+  item_id: string
+  quantity: number
+  unit: string
+  notes: string | null
+  created_at: string
+  item?: Item
+  recipe?: Recipe
+}
+
+export interface WasteSpoilage {
+  id: string
+  item_id: string
+  quantity: number
+  date: string
+  type: 'waste' | 'spoilage'
+  reason: string | null
+  recorded_by: string
+  notes: string | null
+  created_at: string
+  item?: Item
+  recorded_by_profile?: Profile
+}
+

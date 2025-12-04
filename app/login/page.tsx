@@ -18,6 +18,8 @@ function LoginForm() {
       setError('Your account is not authorized. Please contact an administrator.')
     } else if (errorParam === 'session_expired' && !error) {
       setError('Your session has expired. Please sign in again.')
+    } else if (errorParam === 'inactivity' && !error) {
+      setError('You were logged out due to inactivity. Please sign in again.')
     }
   }, [errorParam])
 
@@ -63,8 +65,18 @@ function LoginForm() {
         return
       }
 
+      // Check for saved return path
+      const returnPath = localStorage.getItem('returnPath')
+      localStorage.removeItem('returnPath') // Clear it after use
+
       await new Promise(resolve => setTimeout(resolve, 500))
-      window.location.replace('/dashboard')
+      
+      // Redirect to saved path or default to dashboard
+      const redirectPath = returnPath && (returnPath.startsWith('/dashboard') || returnPath.startsWith('/admin'))
+        ? returnPath
+        : '/dashboard'
+      
+      window.location.replace(redirectPath)
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An error occurred'
       setError(errorMessage)

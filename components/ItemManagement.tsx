@@ -24,6 +24,14 @@ export default function ItemManagement() {
     fetchItems()
   }, [])
 
+  const capitalizeItemName = (name: string): string => {
+    return name
+      .toLowerCase()
+      .split(' ')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ')
+  }
+
   const fetchItems = async () => {
     setLoading(true)
     const { data, error } = await supabase.from('items').select('*').order('name')
@@ -41,11 +49,14 @@ export default function ItemManagement() {
     setMessage(null)
 
     try {
+      // Capitalize item name before saving
+      const capitalizedName = capitalizeItemName(formData.name.trim())
+
       if (editingItem) {
         const { error } = await supabase
           .from('items')
           .update({
-            name: formData.name,
+            name: capitalizedName,
             unit: formData.unit,
             // Don't update quantity when editing - it's managed through opening stock and restocking
             low_stock_threshold: parseInt(formData.low_stock_threshold, 10) || 10,
@@ -59,7 +70,7 @@ export default function ItemManagement() {
         setMessage({ type: 'success', text: 'Item updated successfully!' })
       } else {
         const { error } = await supabase.from('items').insert({
-          name: formData.name,
+          name: capitalizedName,
           unit: formData.unit,
           quantity: parseInt(formData.quantity, 10) || 0,
           low_stock_threshold: parseInt(formData.low_stock_threshold, 10) || 10,

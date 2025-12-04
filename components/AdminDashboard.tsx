@@ -7,6 +7,7 @@ import { format } from 'date-fns'
 import ItemManagement from './ItemManagement'
 import UserManagement from './UserManagement'
 import MenuManagement from './MenuManagement'
+import RecipeManagement from './RecipeManagement'
 
 export default function AdminDashboard() {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
@@ -14,7 +15,7 @@ export default function AdminDashboard() {
   const [closingStocks, setClosingStocks] = useState<(ClosingStock & { item: Item; recorded_by_profile: Profile })[]>([])
   const [sales, setSales] = useState<(Sale & { item: Item; recorded_by_profile: Profile })[]>([])
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'users' | 'menu'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'users' | 'menu' | 'recipes'>('overview')
 
   useEffect(() => {
     fetchData()
@@ -108,6 +109,16 @@ export default function AdminDashboard() {
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer transition-colors`}
             >
               Digital Menu
+            </button>
+            <button
+              onClick={() => setActiveTab('recipes')}
+              className={`${
+                activeTab === 'recipes'
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer transition-colors`}
+            >
+              Recipes
             </button>
           </nav>
         </div>
@@ -313,6 +324,7 @@ export default function AdminDashboard() {
       {activeTab === 'items' && <ItemManagement />}
       {activeTab === 'users' && <UserManagement />}
       {activeTab === 'menu' && <MenuManagement />}
+      {activeTab === 'recipes' && <RecipeManagement />}
     </div>
   )
 }
