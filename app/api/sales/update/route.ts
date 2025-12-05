@@ -61,30 +61,36 @@ export async function PUT(request: NextRequest) {
 
       availableStock = openingQty + totalRestocking - totalSalesExcludingThis
       stockInfo = `Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold: ${totalSalesExcludingThis}`
-    } else {
-      // For today: Current quantity - Other sales already made today
-      const { data: item, error: itemError } = await supabaseAdmin
-        .from('items')
-        .select('quantity')
-        .eq('id', item_id)
-        .single()
+        } else {
+          // For today: Opening Stock + Restocking - Other sales already made today
+          // Quantities only come from opening/closing stock - not from item.quantity
+          const { data: openingStock } = await supabaseAdmin
+            .from('opening_stock')
+            .select('quantity')
+            .eq('item_id', item_id)
+            .eq('date', date)
+            .single()
 
-      if (itemError || !item) {
-        return NextResponse.json({ error: 'Item not found' }, { status: 404 })
-      }
+          const { data: restocking } = await supabaseAdmin
+            .from('restocking')
+            .select('quantity')
+            .eq('item_id', item_id)
+            .eq('date', date)
 
-      const { data: existingSales } = await supabaseAdmin
-        .from('sales')
-        .select('quantity')
-        .eq('item_id', item_id)
-        .eq('date', date)
-        .neq('id', sale_id)
+          const { data: existingSales } = await supabaseAdmin
+            .from('sales')
+            .select('quantity')
+            .eq('item_id', item_id)
+            .eq('date', date)
+            .neq('id', sale_id)
 
-      const totalSalesExcludingThis = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
+          const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
+          const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
+          const totalSalesExcludingThis = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
 
-      availableStock = item.quantity - totalSalesExcludingThis
-      stockInfo = `Current: ${item.quantity}, Sold today: ${totalSalesExcludingThis}`
-    }
+          availableStock = openingQty + totalRestocking - totalSalesExcludingThis
+          stockInfo = `Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold today: ${totalSalesExcludingThis}`
+        }
 
     if (availableStock <= 0) {
       return NextResponse.json(

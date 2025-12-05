@@ -69,8 +69,9 @@ export async function POST(request: NextRequest) {
         const prevClosing = prevClosingStock?.find((cs) => cs.item_id === item.id)
         const prevOpening = prevOpeningStock?.find((os) => os.item_id === item.id)
         
-        // Use previous day's closing stock if exists, otherwise use item quantity
-        const openingStock = prevClosing ? parseFloat(prevClosing.quantity.toString()) : item.quantity
+        // Use previous day's closing stock if exists, otherwise use zero
+        // Quantities only come from opening/closing stock - if not present, use zero
+        const openingStock = prevClosing ? parseFloat(prevClosing.quantity.toString()) : 0
         
         // Use previous day's prices if available, otherwise use item's current prices
         const costPrice = prevOpening?.cost_price ?? item.cost_price
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
           recorded_by: user_id,
           notes: prevClosing
             ? `Auto-created from previous day's closing stock (${prevDateStr})`
-            : `Auto-created from item quantity (no closing stock found for ${prevDateStr})`,
+            : `Auto-created with zero quantity (no closing stock found for ${prevDateStr})`,
         }
       })
 

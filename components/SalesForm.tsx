@@ -94,22 +94,40 @@ function StockAvailabilityDisplay({
             setStockInfo(`Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold: ${totalSales}, Waste/Spoilage: ${totalWasteSpoilage}`)
           }
         } else {
-          // For today: Current quantity - Sales
-          const available = item.quantity - totalSales
-          // Closing stock would be: Current quantity - Sales (including new) - Waste/Spoilage
+          // For today: Opening Stock + Restocking - Sales - Waste/Spoilage
+          // Quantities only come from opening/closing stock - not from item.quantity
+          const { data: openingStock } = await supabase
+            .from('opening_stock')
+            .select('quantity')
+            .eq('item_id', itemId)
+            .eq('date', date)
+            .single()
+
+          const { data: restocking } = await supabase
+            .from('restocking')
+            .select('quantity')
+            .eq('item_id', itemId)
+            .eq('date', date)
+
           const { data: wasteSpoilage } = await supabase
             .from('waste_spoilage')
             .select('quantity')
             .eq('item_id', itemId)
             .eq('date', date)
 
+          const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
+          const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
           const totalWasteSpoilage = wasteSpoilage?.reduce((sum, ws) => sum + parseFloat(ws.quantity.toString()), 0) || 0
-          const closing = item.quantity - salesIncludingNew - totalWasteSpoilage
+
+          // Available stock before this sale
+          const available = openingQty + totalRestocking - totalSales
+          // Closing stock after this sale
+          const closing = openingQty + totalRestocking - salesIncludingNew - totalWasteSpoilage
 
           if (isMounted) {
             setAvailableStock(available)
             setClosingStock(closing)
-            setStockInfo(`Current: ${item.quantity}, Sold today: ${totalSales}, Waste/Spoilage: ${totalWasteSpoilage}`)
+            setStockInfo(`Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold today: ${totalSales}, Waste/Spoilage: ${totalWasteSpoilage}`)
           }
         }
       } catch {
@@ -130,7 +148,7 @@ function StockAvailabilityDisplay({
     return () => {
       isMounted = false
     }
-  }, [itemId, date, quantityToRecord, isPastDate, item.quantity])
+  }, [itemId, date, quantityToRecord, isPastDate])
 
   if (loading) {
     return <p className="text-xs text-gray-500">Calculating availability...</p>
@@ -912,10 +930,7 @@ export default function SalesForm() {
                   // CRITICAL: Use opening stock quantity from the database for this specific date
                   const openingQty = parseFloat(openingStock.quantity.toString())
                   
-                  // Double-check: if opening stock quantity doesn't match item quantity, log for debugging
-                  if (item.quantity !== openingQty && item.quantity > 0) {
-                    console.log(`[SalesForm] Opening stock mismatch for ${item.name} on ${normalizedDate}: Opening Stock=${openingQty}, Item Current Quantity=${item.quantity}`)
-                  }
+                  // Note: item.quantity is not used - quantities only come from opening/closing stock
                   
                   const available = Math.max(0, openingQty + totalRestocking - totalSales)
                   

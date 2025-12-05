@@ -108,12 +108,12 @@ export async function POST(request: NextRequest) {
 
         openingStockRecords.push({
           item_id: item.id,
-          quantity: item.quantity, // Use current item quantity as opening stock
+          quantity: 0, // Use zero - quantities should only come from opening/closing stock
           date: date,
           recorded_by: user_id,
           cost_price: item.cost_price,
           selling_price: item.selling_price,
-          notes: `Auto-seeded opening stock using current item quantity (${item.quantity})`,
+          notes: `Auto-seeded opening stock with zero quantity. Please record actual opening stock for this date.`,
         })
       }
     }

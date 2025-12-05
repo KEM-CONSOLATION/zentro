@@ -9,6 +9,162 @@ import UserManagement from './UserManagement'
 import MenuManagement from './MenuManagement'
 import RecipeManagement from './RecipeManagement'
 
+// Component to reset all item quantities to zero
+function ResetQuantitiesSection() {
+  const [resetting, setResetting] = useState(false)
+  const [resetMessage, setResetMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const handleResetQuantities = async () => {
+    if (!confirm('This will set all item quantities to zero. The system will then only use opening/closing stock for quantities. This cannot be undone. Continue?')) {
+      return
+    }
+
+    setResetting(true)
+    setResetMessage(null)
+
+    try {
+      const response = await fetch('/api/items/reset-quantities', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to reset quantities')
+      }
+
+      setResetMessage({
+        type: 'success',
+        text: data.message || `Success! ${data.items_updated} item quantity(ies) reset to zero. The system will now only use opening/closing stock for quantities.`,
+      })
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to reset quantities'
+      setResetMessage({ type: 'error', text: errorMessage })
+    } finally {
+      setResetting(false)
+    }
+  }
+
+  return (
+    <div className="bg-white shadow rounded-lg p-6 mb-6 border-2 border-orange-200">
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">Reset Item Quantities</h3>
+      <p className="text-sm text-gray-600 mb-4">
+        Set all item quantities to zero. After this, the system will only use opening/closing stock for quantities. 
+        If no opening/closing stock exists, the quantity will be zero.
+      </p>
+      
+      {resetMessage && (
+        <div
+          className={`p-3 rounded mb-4 ${
+            resetMessage.type === 'success'
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-red-50 text-red-800 border border-red-200'
+          }`}
+        >
+          {resetMessage.text}
+        </div>
+      )}
+
+      <button
+        onClick={handleResetQuantities}
+        disabled={resetting}
+        className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {resetting ? 'Resetting...' : 'Reset All Quantities to Zero'}
+      </button>
+      
+      <p className="mt-3 text-xs text-gray-500">
+        <strong>Warning:</strong> This action cannot be undone. Make sure you have recorded opening/closing stock 
+        for your items before resetting quantities.
+      </p>
+    </div>
+  )
+}
+
+// Component to delete all stock data
+function DeleteAllStockDataSection() {
+  const [deleting, setDeleting] = useState(false)
+  const [deleteMessage, setDeleteMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const handleDeleteAllStock = async () => {
+    if (!confirm('⚠️ WARNING: This will DELETE ALL stock data including:\n\n- Opening Stock\n- Closing Stock\n- Sales/Usage\n- Restocking\n- Waste/Spoilage\n\nThis action CANNOT be undone. Are you absolutely sure you want to proceed?')) {
+      return
+    }
+
+    // Double confirmation
+    if (!confirm('This is your last chance. Are you 100% sure you want to delete ALL stock data?')) {
+      return
+    }
+
+    setDeleting(true)
+    setDeleteMessage(null)
+
+    try {
+      const response = await fetch('/api/stock/delete-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete stock data')
+      }
+
+      setDeleteMessage({
+        type: 'success',
+        text: data.message || 'All stock data deleted successfully. You can now start fresh with opening stock from December 1st.',
+      })
+      
+      // Refresh the page after 2 seconds to show empty state
+      setTimeout(() => {
+        window.location.reload()
+      }, 2000)
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete stock data'
+      setDeleteMessage({ type: 'error', text: errorMessage })
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="bg-white shadow rounded-lg p-6 mb-6 border-2 border-red-200">
+      <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete All Stock Data</h3>
+      <p className="text-sm text-gray-600 mb-4">
+        <strong className="text-red-600">⚠️ DANGER ZONE:</strong> This will permanently delete ALL stock-related data including opening stock, closing stock, sales, restocking, and waste/spoilage records. 
+        This is useful when you want to start completely fresh (e.g., from December 1st).
+      </p>
+      
+      {deleteMessage && (
+        <div
+          className={`p-3 rounded mb-4 ${
+            deleteMessage.type === 'success'
+              ? 'bg-green-50 text-green-800 border border-green-200'
+              : 'bg-red-50 text-red-800 border border-red-200'
+          }`}
+        >
+          {deleteMessage.text}
+        </div>
+      )}
+
+      <button
+        onClick={handleDeleteAllStock}
+        disabled={deleting}
+        className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        {deleting ? 'Deleting All Data...' : '⚠️ Delete All Stock Data'}
+      </button>
+      
+      <p className="mt-3 text-xs text-red-600 font-semibold">
+        <strong>⚠️ WARNING:</strong> This action is IRREVERSIBLE. All stock data will be permanently deleted. 
+        Make sure you have a backup if needed.
+      </p>
+    </div>
+  )
+}
+
 // Helper function to safely format date
 const formatDateSafely = (dateString: string): string => {
   if (!dateString || !dateString.trim()) return 'N/A'
@@ -144,6 +300,8 @@ export default function AdminDashboard() {
 
       {activeTab === 'overview' && (
         <div className="space-y-6">
+          <ResetQuantitiesSection />
+          <DeleteAllStockDataSection />
           <div className="bg-white shadow-sm rounded-lg border border-gray-200 p-6">
             <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-2">
               Select Date

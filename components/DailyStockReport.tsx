@@ -22,7 +22,7 @@ interface StockReportItem {
   item_unit: string
   current_quantity: number
   opening_stock: number
-  opening_stock_source?: 'previous_closing_stock' | 'item_quantity' | 'manual_entry'
+  opening_stock_source?: 'previous_closing_stock' | 'item_quantity' | 'manual_entry' | 'zero'
   opening_stock_cost_price?: number | null
   opening_stock_selling_price?: number | null
   restocking?: number
@@ -300,7 +300,8 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
           const prevOpening = prevOpeningStock?.find((os) => os.item_id === item.id)
 
           // ALWAYS use previous day's closing stock as opening stock
-          const openingQty = closing ? parseFloat(closing.quantity.toString()) : item.quantity
+          // If no closing stock, use zero (quantities only come from opening/closing stock)
+          const openingQty = closing ? parseFloat(closing.quantity.toString()) : 0
 
           // Use prices from previous day's opening stock, or item's current prices
           const costPrice = prevOpening?.cost_price ?? currentOpening?.cost_price ?? item.cost_price
@@ -749,11 +750,11 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                 </p>
               </div>
             )}
-            {type === 'opening' && report.report.some(item => item.opening_stock_source === 'item_quantity') && (
+            {type === 'opening' && report.report.some(item => item.opening_stock_source === 'zero') && (
               <div className="mt-2 p-3 bg-yellow-50 border border-yellow-200 rounded">
                 <p className="text-sm text-yellow-800">
-                  <strong>Note:</strong> Some items are using their current quantity as opening stock because no closing stock was recorded for the previous day. 
-                  Make sure to save closing stock records at the end of each day for accurate opening stock calculations.
+                  <strong>Note:</strong> Some items have zero opening stock because no closing stock was recorded for the previous day. 
+                  Make sure to save closing stock records at the end of each day for accurate opening stock calculations. Quantities only come from opening/closing stock.
                 </p>
               </div>
             )}
@@ -840,8 +841,8 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                           ) : (
                             <>
                           <span className="font-medium">{item.opening_stock}</span> {item.item_unit}
-                              {item.opening_stock_source === 'item_quantity' && (
-                                <span className="ml-2 text-xs text-yellow-600" title="Using item quantity because no closing stock found for previous day">
+                              {item.opening_stock_source === 'zero' && (
+                                <span className="ml-2 text-xs text-yellow-600" title="Zero opening stock because no closing stock found for previous day">
                                   ⚠
                                 </span>
                               )}

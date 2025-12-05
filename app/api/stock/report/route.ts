@@ -98,13 +98,14 @@ export async function GET(request: NextRequest) {
     const report = items.map((item) => {
       // Opening stock: ALWAYS use previous day's closing stock if available for consistency
       // Only fall back to manually entered opening stock if no previous closing stock exists
+      // If neither exists, use zero (not item.quantity) - quantities are only from opening/closing stock
       const existingOpening = existingOpeningStock?.find((os) => os.item_id === item.id)
       const prevClosing = prevClosingStock?.find((cs) => cs.item_id === item.id)
       const openingStock = prevClosing
         ? parseFloat(prevClosing.quantity.toString()) // Always use previous day's closing stock if available
         : existingOpening
         ? parseFloat(existingOpening.quantity.toString())
-        : item.quantity
+        : 0 // Use zero if no opening/closing stock exists - quantities only come from stock system
 
       // Calculate total sales for this date
       const itemSales = dateSales?.filter((s) => s.item_id === item.id) || []
@@ -129,13 +130,13 @@ export async function GET(request: NextRequest) {
         item_id: item.id,
         item_name: item.name,
         item_unit: item.unit,
-        current_quantity: item.quantity,
+        current_quantity: 0, // Always zero - quantities only come from opening/closing stock
         opening_stock: openingStock,
         opening_stock_source: existingOpening
           ? 'manual_entry'
           : prevClosing
           ? 'previous_closing_stock'
-          : 'item_quantity',
+          : 'zero', // No previous closing stock - using zero (quantities only come from opening/closing stock)
         opening_stock_cost_price: existingOpening?.cost_price ?? null,
         opening_stock_selling_price: existingOpening?.selling_price ?? null,
         restocking: totalRestocking,

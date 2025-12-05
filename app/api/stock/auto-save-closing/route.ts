@@ -75,14 +75,15 @@ export async function POST(request: NextRequest) {
 
     // Calculate and save closing stock for each item
     const closingStockRecords = items.map((item) => {
-      // Determine opening stock: use today's opening stock if exists, otherwise previous closing stock, otherwise item quantity
-      const todayOpening = todayOpeningStock?.find((os) => os.item_id === item.id)
-      const prevClosing = prevClosingStock?.find((cs) => cs.item_id === item.id)
-      const openingStock = todayOpening
-        ? parseFloat(todayOpening.quantity.toString())
-        : prevClosing
-        ? parseFloat(prevClosing.quantity.toString())
-        : item.quantity
+          // Determine opening stock: use today's opening stock if exists, otherwise previous closing stock, otherwise zero
+          // Quantities only come from opening/closing stock - if not present, use zero
+          const todayOpening = todayOpeningStock?.find((os) => os.item_id === item.id)
+          const prevClosing = prevClosingStock?.find((cs) => cs.item_id === item.id)
+          const openingStock = todayOpening
+            ? parseFloat(todayOpening.quantity.toString())
+            : prevClosing
+            ? parseFloat(prevClosing.quantity.toString())
+            : 0 // Use zero if no opening/closing stock exists
 
       // Calculate total sales for today
       const itemSales = todaySales?.filter((s) => s.item_id === item.id) || []

@@ -92,14 +92,15 @@ export async function recalculateClosingStock(
     // Note: This function recalculates ALL items based on the formula, even if manually entered
     // This ensures consistency: Closing Stock = Opening + Restocking - Sales - Waste/Spoilage
     const closingStockRecords = items.map((item) => {
-        // Determine opening stock
-        const todayOpening = todayOpeningStock?.find((os) => os.item_id === item.id)
-        const prevClosing = prevClosingStock?.find((cs) => cs.item_id === item.id)
-        const openingStock = todayOpening
-          ? parseFloat(todayOpening.quantity.toString())
-          : prevClosing
-          ? parseFloat(prevClosing.quantity.toString())
-          : item.quantity
+            // Determine opening stock
+            // Quantities only come from opening/closing stock - if not present, use zero
+            const todayOpening = todayOpeningStock?.find((os) => os.item_id === item.id)
+            const prevClosing = prevClosingStock?.find((cs) => cs.item_id === item.id)
+            const openingStock = todayOpening
+              ? parseFloat(todayOpening.quantity.toString())
+              : prevClosing
+              ? parseFloat(prevClosing.quantity.toString())
+              : 0 // Use zero if no opening/closing stock exists
 
         // Calculate totals
         const itemSales = todaySales?.filter((s) => s.item_id === item.id) || []
@@ -244,7 +245,8 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
         
         // ALWAYS use closing stock quantity as opening stock for next day
         // This ensures consistency: closing stock of one day = opening stock of next day
-        const openingQty = closing ? parseFloat(closing.quantity.toString()) : item.quantity
+        // If no closing stock, use zero (quantities only come from opening/closing stock)
+        const openingQty = closing ? parseFloat(closing.quantity.toString()) : 0
         
         // Use prices from current date's opening stock, or item's current prices
         const costPrice = currentOpening?.cost_price ?? item.cost_price
