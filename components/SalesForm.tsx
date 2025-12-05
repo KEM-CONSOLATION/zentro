@@ -320,7 +320,7 @@ export default function SalesForm() {
       if (data && data.length > 0) {
         // Filter out any duplicates (shouldn't happen due to UNIQUE constraint, but just in case)
         const uniqueOpeningStocks = data.reduce((acc, current) => {
-          const existing = acc.find(item => item.item_id === current.item_id)
+          const existing = acc.find((item: typeof data[0]) => item.item_id === current.item_id)
           if (!existing) {
             acc.push(current)
           } else {
@@ -334,7 +334,7 @@ export default function SalesForm() {
         }, [] as typeof data)
         
         // Debug: Log opening stock for water specifically
-        const waterStock = uniqueOpeningStocks.find(os => os.item?.name?.toLowerCase() === 'water')
+        const waterStock = uniqueOpeningStocks.find((os: typeof data[0]) => os.item?.name?.toLowerCase() === 'water')
         if (waterStock) {
           console.log(`Water opening stock for ${dateStr}:`, {
             quantity: waterStock.quantity,
@@ -727,7 +727,7 @@ export default function SalesForm() {
         <div>
           <label htmlFor="item" className="block text-sm font-medium text-gray-700 mb-1">
             Item Used
-            {isPastDate && <span className="text-xs text-gray-500 ml-1">(From opening stock of this date, derived from previous day's closing stock)</span>}
+            {isPastDate && <span className="text-xs text-gray-500 ml-1">(From opening stock of this date, derived from previous day&apos;s closing stock)</span>}
           </label>
           <select
             id="item"
