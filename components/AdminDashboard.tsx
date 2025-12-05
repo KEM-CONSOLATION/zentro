@@ -47,7 +47,7 @@ function ResetQuantitiesSection() {
   }
 
   return (
-    <div className="bg-white shadow rounded-lg p-6 mb-6 border-2 border-orange-200">
+    <div className="bg-white shadow rounded-lg p-6 mb-6 border-2 border-orange-200 hidden">
       <h3 className="text-lg font-semibold text-gray-900 mb-2">Reset Item Quantities</h3>
       <p className="text-sm text-gray-600 mb-4">
         Set all item quantities to zero. After this, the system will only use opening/closing stock for quantities. 
@@ -130,7 +130,7 @@ function DeleteAllStockDataSection() {
   }
 
   return (
-    <div className="bg-white shadow rounded-lg p-6 mb-6 border-2 border-red-200">
+    <div className="bg-white shadow rounded-lg p-6 mb-6 border-2 border-red-200 hidden">
       <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete All Stock Data</h3>
       <p className="text-sm text-gray-600 mb-4">
         <strong className="text-red-600">⚠️ DANGER ZONE:</strong> This will permanently delete ALL stock-related data including opening stock, closing stock, sales, restocking, and waste/spoilage records. 

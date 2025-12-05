@@ -194,14 +194,9 @@ export default function SalesForm() {
     fetchItems()
     fetchSales()
     checkUserRole()
-    // Fetch opening stock and restocking for past dates
-    if (isPastDate) {
-      fetchOpeningStock()
-      fetchRestocking()
-    } else {
-      setOpeningStocks([])
-      setRestockings([])
-    }
+    // Fetch opening stock and restocking for all dates (including today)
+    fetchOpeningStock()
+    fetchRestocking()
     // Ensure date is always today for staff, but allow past dates for admins
     if (userRole === 'staff' && date !== today) {
       setDate(today)
@@ -255,7 +250,7 @@ export default function SalesForm() {
           price = latestRestocking.selling_price || latestRestocking.item?.selling_price || 0
         } else {
           // Final fallback to item's current selling price
-          const selectedItemData = items.find(item => item.id === selectedItem)
+      const selectedItemData = items.find(item => item.id === selectedItem)
           price = selectedItemData?.selling_price || 0
         }
       } else {
@@ -354,9 +349,9 @@ export default function SalesForm() {
           item:items(*)
         `)
         .eq('date', dateStr) // This should match exactly one record per item due to UNIQUE constraint
-        .order('created_at', { ascending: false })
+      .order('created_at', { ascending: false })
 
-      if (error) {
+    if (error) {
         const errorDetails = {
           message: error.message || 'Unknown error',
           details: error.details || 'No details',
@@ -393,7 +388,7 @@ export default function SalesForm() {
           const existing = acc.find((item: typeof data[0]) => item.item_id === current.item_id)
           if (!existing) {
             acc.push(current)
-          } else {
+    } else {
             // If duplicate exists, prefer the one that:
             // 1. Matches the date exactly
             // 2. Has the most recent created_at (most likely to be correct)
@@ -637,20 +632,38 @@ export default function SalesForm() {
           availableStock = openingQty + totalRestocking - totalSalesSoFar
           stockInfo = `Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold: ${totalSalesSoFar}`
         } else {
-          // For today: Current quantity - Sales already made today
+          // For today: Opening Stock + Restocking - Sales already made today
+          // Quantities only come from opening/closing stock - not from item.quantity
+          const normalizedDate = date.split('T')[0]
+          
+          const { data: openingStock } = await supabase
+            .from('opening_stock')
+            .select('quantity')
+            .eq('item_id', selectedItem)
+            .eq('date', normalizedDate)
+            .single()
+
+          const { data: restocking } = await supabase
+            .from('restocking')
+            .select('quantity')
+            .eq('item_id', selectedItem)
+            .eq('date', normalizedDate)
+
           const { data: existingSales } = await supabase
             .from('sales')
             .select('id, quantity')
             .eq('item_id', selectedItem)
-            .eq('date', date)
+            .eq('date', normalizedDate)
 
+          const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
+          const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
           const totalSalesSoFar = existingSales?.reduce((sum, s) => {
             if (editingSale && s.id === editingSale.id) return sum
             return sum + parseFloat(s.quantity.toString())
           }, 0) || 0
           
-          availableStock = freshItem.quantity - totalSalesSoFar
-          stockInfo = `Current: ${freshItem.quantity}, Sold today: ${totalSalesSoFar}`
+          availableStock = openingQty + totalRestocking - totalSalesSoFar
+          stockInfo = `Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold today: ${totalSalesSoFar}`
         }
         
         if (availableStock <= 0) {
@@ -661,7 +674,7 @@ export default function SalesForm() {
           setLoading(false)
           return
         }
-
+        
         if (quantityValue > availableStock) {
           setMessage({ 
             type: 'error', 
@@ -951,20 +964,47 @@ export default function SalesForm() {
                 </option>
               )
             ) : (
-              // For today: show all items with current quantity
+              // For today: show items with opening stock + restocking breakdown (same format as past dates)
               items.map((item) => {
-                const itemSales = sales.filter(s => s.item_id === item.id)
+                // Normalize date to ensure correct filtering
+                const normalizedDate = date.split('T')[0]
+                
+                // Get opening stock for this item on today's date
+                const itemOpeningStock = openingStocks.find(os => {
+                  const osDate = os.date.split('T')[0]
+                  return os.item_id === item.id && osDate === normalizedDate
+                })
+                const openingQty = itemOpeningStock ? parseFloat(itemOpeningStock.quantity.toString()) : 0
+                
+                // Get restocking for this item on today's date
+                const itemRestocking = restockings.filter(r => {
+                  const restockDate = r.date.split('T')[0]
+                  return r.item_id === item.id && restockDate === normalizedDate
+                })
+                const totalRestocking = itemRestocking.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0)
+                
+                // Get sales already recorded for this item today
+                const itemSales = sales.filter(s => {
+                  const saleDate = s.date.split('T')[0]
+                  return s.item_id === item.id && saleDate === normalizedDate
+                })
                 const totalSales = itemSales.reduce((sum, s) => {
                   // Exclude the sale being edited from total
                   if (editingSale && s.id === editingSale.id) return sum
                   return sum + s.quantity
                 }, 0)
-                // Available = Current quantity - Sales already made today
-                const available = item.quantity - totalSales
+                
+                // Available = Opening Stock + Restocking - Sales already made
+                const available = Math.max(0, openingQty + totalRestocking - totalSales)
+                
+                // Format display to show opening stock and restocking (same format as past dates)
+                const displayText = totalRestocking > 0
+                  ? `${item.name} (${item.unit}) - Available: ${available > 0 ? available : 0} (Opening Stock: ${openingQty}, Restocked: ${totalRestocking})`
+                  : `${item.name} (${item.unit}) - Available: ${available > 0 ? available : 0} (Opening Stock: ${openingQty})`
                 
                 return (
                   <option key={item.id} value={item.id}>
-                    {item.name} ({item.unit}) - Available: {available > 0 ? available : 0}
+                    {displayText}
                   </option>
                 )
               })
