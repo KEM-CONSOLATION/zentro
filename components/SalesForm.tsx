@@ -300,57 +300,154 @@ export default function SalesForm() {
   const fetchOpeningStock = async () => {
     try {
       // Ensure date is in YYYY-MM-DD format
-      const dateStr = date.split('T')[0] // Remove time if present
+      let dateStr = date
       
+      // Handle different date formats
+      if (date.includes('T')) {
+        dateStr = date.split('T')[0] // Remove time if present
+      } else if (date.includes('/')) {
+        // Handle DD/MM/YYYY or MM/DD/YYYY format
+        const parts = date.split('/')
+        if (parts.length === 3) {
+          // Assume DD/MM/YYYY format (common in some locales)
+          dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`
+        }
+      }
+      
+      // Final validation: ensure dateStr is in YYYY-MM-DD format
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        console.error(`Invalid date format: ${dateStr} (original: ${date})`)
+        setMessage({ 
+          type: 'error', 
+          text: `Invalid date format: ${date}. Please select a valid date.` 
+        })
+        setOpeningStocks([])
+        return
+      }
+      
+      console.log(`Fetching opening stock for date: ${dateStr} (original: ${date})`)
+      
+      // Query opening stock for the specific date
+      // Note: Due to UNIQUE constraint on (item_id, date), there should only be one record per item per date
       const { data, error } = await supabase
         .from('opening_stock')
         .select(`
           *,
           item:items(*)
         `)
-        .eq('date', dateStr)
+        .eq('date', dateStr) // This should match exactly one record per item due to UNIQUE constraint
         .order('created_at', { ascending: false })
 
       if (error) {
-        console.error('Error fetching opening stock:', error)
+        const errorDetails = {
+          message: error.message || 'Unknown error',
+          details: error.details || 'No details',
+          hint: error.hint || 'No hint',
+          code: error.code || 'No code',
+          dateStr,
+          originalDate: date
+        }
+        console.error('Error fetching opening stock:', errorDetails)
+        
+        // Show user-friendly error message
+        setMessage({ 
+          type: 'error', 
+          text: `Error fetching opening stock: ${errorDetails.message}. Please check the console for details.` 
+        })
         setOpeningStocks([])
         return
       }
 
+      console.log(`Opening stock query result for ${dateStr}:`, {
+        dataLength: data?.length || 0,
+        data: data?.map(os => ({ 
+          item_id: os.item_id, 
+          item_name: os.item?.name, 
+          quantity: os.quantity, 
+          date: os.date 
+        }))
+      })
+
       if (data && data.length > 0) {
         // Filter out any duplicates (shouldn't happen due to UNIQUE constraint, but just in case)
+        // IMPORTANT: If duplicates exist, we want the one that matches the date exactly and has the correct quantity
         const uniqueOpeningStocks = data.reduce((acc, current) => {
           const existing = acc.find((item: typeof data[0]) => item.item_id === current.item_id)
           if (!existing) {
             acc.push(current)
           } else {
-            // If duplicate, keep the one with the most recent created_at
-            if (new Date(current.created_at) > new Date(existing.created_at)) {
+            // If duplicate exists, prefer the one that:
+            // 1. Matches the date exactly
+            // 2. Has the most recent created_at (most likely to be correct)
+            const currentDateMatch = current.date === dateStr
+            const existingDateMatch = existing.date === dateStr
+            
+            if (currentDateMatch && !existingDateMatch) {
+              // Current matches date, existing doesn't - use current
               const index = acc.indexOf(existing)
               acc[index] = current
+            } else if (!currentDateMatch && existingDateMatch) {
+              // Existing matches date, current doesn't - keep existing
+              // Do nothing
+            } else {
+              // Both match or both don't match - use most recent
+              if (new Date(current.created_at) > new Date(existing.created_at)) {
+                const index = acc.indexOf(existing)
+                acc[index] = current
+              }
             }
           }
           return acc
         }, [] as typeof data)
         
-        // Debug: Log opening stock for water specifically
+        // Debug: Log opening stock for water specifically with full details
         const waterStock = uniqueOpeningStocks.find((os: typeof data[0]) => os.item?.name?.toLowerCase() === 'water')
         if (waterStock) {
           console.log(`Water opening stock for ${dateStr}:`, {
+            id: waterStock.id,
             quantity: waterStock.quantity,
             date: waterStock.date,
-            itemQuantity: waterStock.item?.quantity
+            dateMatch: waterStock.date === dateStr,
+            created_at: waterStock.created_at,
+            itemQuantity: waterStock.item?.quantity,
+            notes: waterStock.notes
           })
         }
         
+        // Also log all water records found (in case of duplicates)
+        const allWaterRecords = data.filter((os: typeof data[0]) => os.item?.name?.toLowerCase() === 'water')
+        if (allWaterRecords.length > 1) {
+          console.warn(`Multiple opening stock records found for water on ${dateStr}:`, allWaterRecords.map(os => ({
+            id: os.id,
+            quantity: os.quantity,
+            date: os.date,
+            created_at: os.created_at
+          })))
+        }
+        
         setOpeningStocks(uniqueOpeningStocks as (OpeningStock & { item?: Item })[])
+        // Clear any previous error messages if we successfully fetched data
+        if (message?.type === 'error' && message.text.includes('opening stock')) {
+          setMessage(null)
+        }
       } else {
-        console.log(`No opening stock found for date: ${dateStr}`)
+        console.log(`No opening stock found for date: ${dateStr}. This might be normal if opening stock hasn't been recorded for this date yet.`)
         setOpeningStocks([])
+        // Only show error message if this is a past date (opening stock should exist for past dates)
+        if (isPastDate) {
+          setMessage({ 
+            type: 'error', 
+            text: `No opening stock found for ${dateStr}. Please record opening stock first for this date.` 
+          })
+        }
       }
     } catch (error) {
       console.error('Error in fetchOpeningStock:', error)
-      // Silently fail - opening stock might not exist for all dates
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      setMessage({ 
+        type: 'error', 
+        text: `Failed to fetch opening stock: ${errorMessage}. Please try again.` 
+      })
       setOpeningStocks([])
     }
   }
