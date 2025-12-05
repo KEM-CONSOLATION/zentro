@@ -109,7 +109,17 @@ export default function ProfitLossView() {
             id="profit-date"
             type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
+            max={format(new Date(), 'yyyy-MM-dd')}
+            onChange={(e) => {
+              const selectedDate = e.target.value
+              const today = format(new Date(), 'yyyy-MM-dd')
+              if (selectedDate > today) {
+                alert('Cannot select future dates. Please select today or a past date.')
+                setSelectedDate(today)
+              } else {
+                setSelectedDate(selectedDate)
+              }
+            }}
             className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-gray-900 cursor-pointer"
           />
         </div>

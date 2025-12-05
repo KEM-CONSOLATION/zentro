@@ -7,6 +7,12 @@ export async function recalculateClosingStock(
   date: string,
   user_id: string
 ) {
+  // Reject future dates
+  const today = new Date().toISOString().split('T')[0]
+  if (date > today) {
+    throw new Error('Cannot calculate closing stock for future dates')
+  }
+
   // Access environment variables inside the function to avoid issues when imported in client components
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -121,6 +127,12 @@ export async function recalculateClosingStock(
  * This continues until we reach today or a manually entered opening stock
  */
 export async function cascadeUpdateFromDate(start_date: string, user_id: string) {
+  // Reject future dates
+  const today = new Date().toISOString().split('T')[0]
+  if (start_date > today) {
+    throw new Error('Cannot cascade update from future dates')
+  }
+
   // Access environment variables inside the function to avoid issues when imported in client components
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -135,8 +147,6 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
       persistSession: false,
     },
   })
-
-  const today = new Date().toISOString().split('T')[0]
   let currentDate = new Date(start_date + 'T00:00:00')
   const updates: string[] = []
 

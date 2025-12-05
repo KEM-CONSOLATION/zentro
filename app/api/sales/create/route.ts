@@ -21,8 +21,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Check if this is a past date
+    // Reject future dates
     const today = new Date().toISOString().split('T')[0]
+    if (date > today) {
+      return NextResponse.json({ error: 'Cannot record sales for future dates' }, { status: 400 })
+    }
+
+    // Check if this is a past date
     const isPastDate = date < today
 
     let availableStock = 0

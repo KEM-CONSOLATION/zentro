@@ -20,6 +20,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing date or user_id' }, { status: 400 })
     }
 
+    // Reject future dates
+    const today = new Date().toISOString().split('T')[0]
+    if (date > today) {
+      return NextResponse.json({ error: 'Cannot create opening stock for future dates' }, { status: 400 })
+    }
+
     // Calculate previous date
     const dateObj = new Date(date + 'T00:00:00')
     const prevDate = new Date(dateObj)

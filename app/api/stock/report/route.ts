@@ -16,6 +16,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const date = searchParams.get('date') || new Date().toISOString().split('T')[0]
 
+    // Reject future dates
+    const today = new Date().toISOString().split('T')[0]
+    if (date > today) {
+      return NextResponse.json({ error: 'Cannot generate reports for future dates' }, { status: 400 })
+    }
+
     // Get all items
     const { data: items, error: itemsError } = await supabaseAdmin
       .from('items')

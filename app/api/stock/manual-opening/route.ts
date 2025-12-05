@@ -20,6 +20,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    // Reject future dates
+    const today = new Date().toISOString().split('T')[0]
+    if (date > today) {
+      return NextResponse.json({ error: 'Cannot record opening stock for future dates' }, { status: 400 })
+    }
+
     // Validate items array
     const openingStockRecords = items.map((item: { 
       item_id: string

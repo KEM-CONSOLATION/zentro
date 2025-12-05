@@ -17,7 +17,8 @@ interface SalesSummary {
 
 export default function SalesReports() {
   const [selectedPeriod, setSelectedPeriod] = useState<'daily' | 'weekly' | 'monthly'>('daily')
-  const [selectedDate, setSelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'))
+  const today = format(new Date(), 'yyyy-MM-dd')
+  const [selectedDate, setSelectedDate] = useState(today)
   const [dailySales, setDailySales] = useState<SalesSummary | null>(null)
   const [weeklySales, setWeeklySales] = useState<SalesSummary | null>(null)
   const [monthlySales, setMonthlySales] = useState<SalesSummary | null>(null)
@@ -251,11 +252,24 @@ export default function SalesReports() {
               id="report-date"
               type={selectedPeriod === 'monthly' ? 'month' : 'date'}
               value={selectedPeriod === 'monthly' ? selectedDate.substring(0, 7) : selectedDate}
+              max={selectedPeriod === 'monthly' ? today.substring(0, 7) : today}
               onChange={(e) => {
                 if (selectedPeriod === 'monthly') {
-                  setSelectedDate(e.target.value + '-01')
+                  const newDate = e.target.value + '-01'
+                  if (newDate > today) {
+                    alert('Cannot select future dates. Please select today or a past date.')
+                    setSelectedDate(today)
+                  } else {
+                    setSelectedDate(newDate)
+                  }
                 } else {
-                  setSelectedDate(e.target.value)
+                  const newDate = e.target.value
+                  if (newDate > today) {
+                    alert('Cannot select future dates. Please select today or a past date.')
+                    setSelectedDate(today)
+                  } else {
+                    setSelectedDate(newDate)
+                  }
                 }
               }}
               className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-gray-900 cursor-pointer"

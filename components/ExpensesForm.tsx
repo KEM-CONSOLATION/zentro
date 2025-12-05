@@ -189,7 +189,17 @@ export default function ExpensesForm() {
             id="date"
             type="date"
             value={date}
-            onChange={(e) => setDate(e.target.value)}
+            max={format(new Date(), 'yyyy-MM-dd')}
+            onChange={(e) => {
+              const selectedDate = e.target.value
+              const today = format(new Date(), 'yyyy-MM-dd')
+              if (selectedDate > today) {
+                alert('Cannot select future dates. Please select today or a past date.')
+                setDate(today)
+              } else {
+                setDate(selectedDate)
+              }
+            }}
             required
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
           />
