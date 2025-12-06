@@ -187,7 +187,8 @@ export default function AdminDashboard() {
   const [closingStocks, setClosingStocks] = useState<(ClosingStock & { item: Item; recorded_by_profile: Profile })[]>([])
   const [sales, setSales] = useState<(Sale & { item: Item; recorded_by_profile: Profile })[]>([])
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'users' | 'menu' | 'recipes'>('overview')
+  const [userRole, setUserRole] = useState<'admin' | 'superadmin' | null>(null)
+  const [activeTab, setActiveTab] = useState<'overview' | 'items' | 'users' | 'menu' | 'recipes' | 'superadmin'>('overview')
 
   useEffect(() => {
     checkUserRole()

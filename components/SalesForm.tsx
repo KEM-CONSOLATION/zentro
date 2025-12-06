@@ -169,7 +169,7 @@ export default function SalesForm() {
   const [openingStocks, setOpeningStocks] = useState<(OpeningStock & { item?: Item })[]>([])
   const [restockings, setRestockings] = useState<(Restocking & { item?: Item })[]>([])
   const [selectedItem, setSelectedItem] = useState('')
-  const [selectedBatch, setSelectedBatch] = useState<{ type: 'opening_stock' | 'restocking'; id: string; price: number; label: string } | null>(null)
+  const [selectedBatch, setSelectedBatch] = useState<{ type: 'opening_stock' | 'restocking'; id: string; price: number; label: string; available: number } | null>(null)
   const [quantity, setQuantity] = useState('')
   const [pricePerUnit, setPricePerUnit] = useState('')
   const [totalPrice, setTotalPrice] = useState('')
@@ -580,11 +580,11 @@ export default function SalesForm() {
               total_price: parseFloat(totalPrice) || 0,
               payment_mode: paymentMode,
         date,
-        description: description || null,
+              description: description || null,
               user_id: user.id,
-              restocking_id: selectedBatch.type === 'restocking' ? selectedBatch.id : null,
-              opening_stock_id: selectedBatch.type === 'opening_stock' ? selectedBatch.id : null,
-              batch_label: selectedBatch.label,
+              restocking_id: selectedBatch && selectedBatch.type === 'restocking' ? selectedBatch.id : null,
+              opening_stock_id: selectedBatch && selectedBatch.type === 'opening_stock' ? selectedBatch.id : null,
+              batch_label: selectedBatch ? selectedBatch.label : null,
             }),
       })
 
