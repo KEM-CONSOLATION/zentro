@@ -3,6 +3,7 @@
 import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
+import { getAppName, getDefaultBrandColor } from '@/components/OrganizationLogo'
 
 function LoginForm() {
   const [email, setEmail] = useState('')
@@ -101,12 +102,26 @@ function LoginForm() {
     }
   }
 
+  const appName = getAppName()
+  const brandColor = getDefaultBrandColor()
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8">
-        <h1 className="text-3xl font-bold text-center text-gray-900 mb-2">
-          La Cuisine
-        </h1>
+        <div className="flex items-center justify-center gap-3 mb-2">
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg"
+            style={{ backgroundColor: brandColor }}
+          >
+            {appName.substring(0, 2).toUpperCase()}
+          </div>
+          <h1 
+            className="text-3xl font-bold text-center"
+            style={{ color: brandColor }}
+          >
+            {appName}
+          </h1>
+        </div>
         <p className="text-center text-gray-600 mb-8">Sign in to your account</p>
 
         <form onSubmit={handleLogin} className="space-y-6">
@@ -168,7 +183,22 @@ function LoginForm() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg font-medium hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            className="w-full text-white py-2 px-4 rounded-lg font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer transition-colors"
+            style={{ 
+              backgroundColor: brandColor,
+              '--tw-ring-color': brandColor
+            } as React.CSSProperties & { '--tw-ring-color': string }}
+            onMouseEnter={(e) => {
+              const color = brandColor
+              const r = parseInt(color.slice(1, 3), 16)
+              const g = parseInt(color.slice(3, 5), 16)
+              const b = parseInt(color.slice(5, 7), 16)
+              const darker = `rgb(${Math.max(0, r - 20)}, ${Math.max(0, g - 20)}, ${Math.max(0, b - 20)})`
+              e.currentTarget.style.backgroundColor = darker
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = brandColor
+            }}
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
@@ -183,7 +213,20 @@ export default function LoginPage() {
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
         <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8">
-          <h1 className="text-3xl font-bold text-center text-gray-900 mb-2">La Cuisine</h1>
+          <div className="flex items-center justify-center gap-3 mb-2">
+            <div
+              className="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg"
+              style={{ backgroundColor: getDefaultBrandColor() }}
+            >
+              {getAppName().substring(0, 2).toUpperCase()}
+            </div>
+            <h1 
+              className="text-3xl font-bold text-center"
+              style={{ color: getDefaultBrandColor() }}
+            >
+              {getAppName()}
+            </h1>
+          </div>
           <p className="text-center text-gray-600">Loading...</p>
         </div>
       </div>

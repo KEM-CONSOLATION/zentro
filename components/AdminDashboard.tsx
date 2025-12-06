@@ -192,9 +192,11 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     checkUserRole()
-    fetchData()
+    if (userRole !== 'superadmin') {
+      fetchData()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate])
+  }, [selectedDate, userRole])
 
   const checkUserRole = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -205,7 +207,12 @@ export default function AdminDashboard() {
         .eq('id', user.id)
         .single()
       if (profile) {
-        setUserRole(profile.role as 'admin' | 'superadmin')
+        const role = profile.role as 'admin' | 'superadmin'
+        setUserRole(role)
+        // Superadmins should default to superadmin tab
+        if (role === 'superadmin') {
+          setActiveTab('superadmin')
+        }
       }
     }
   }
@@ -246,6 +253,11 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Superadmins only see SuperAdminView - no organization-specific features
+  if (userRole === 'superadmin') {
+    return <SuperAdminView />
   }
 
   return (
@@ -308,18 +320,6 @@ export default function AdminDashboard() {
             >
               Recipes
             </button>
-            {userRole === 'superadmin' && (
-              <button
-                onClick={() => setActiveTab('superadmin')}
-                className={`${
-                  activeTab === 'superadmin'
-                    ? 'border-red-600 text-red-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer transition-colors`}
-              >
-                Super Admin
-              </button>
-            )}
           </nav>
         </div>
       </div>
@@ -537,7 +537,6 @@ export default function AdminDashboard() {
       {activeTab === 'users' && <UserManagement />}
       {activeTab === 'menu' && <MenuManagement />}
       {activeTab === 'recipes' && <RecipeManagement />}
-      {activeTab === 'superadmin' && userRole === 'superadmin' && <SuperAdminView />}
     </div>
   )
 }

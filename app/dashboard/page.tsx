@@ -30,6 +30,11 @@ export default async function DashboardPage() {
     redirect('/login?error=unauthorized')
   }
 
+  // Superadmins should only access the admin page
+  if (profile.role === 'superadmin') {
+    redirect('/admin')
+  }
+
   return (
     <DashboardLayout user={profile}>
       <div>

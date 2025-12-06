@@ -7,6 +7,8 @@ export interface Organization {
   created_by: string
   created_at: string
   updated_at: string
+  logo_url?: string | null
+  brand_color?: string | null
 }
 
 export interface Profile {

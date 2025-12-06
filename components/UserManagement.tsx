@@ -27,10 +27,36 @@ export default function UserManagement() {
     setLoading(true)
     setError(null)
     try {
-      const { data, error: fetchError } = await supabase
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { data: profile } = await supabase
         .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false })
+        .select('role, organization_id')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile) return
+
+      let query = supabase.from('profiles').select('*')
+
+      // Admins only see staff in their organization (exclude themselves)
+      if (profile.role === 'admin' && profile.organization_id) {
+        query = query
+          .eq('organization_id', profile.organization_id)
+          .eq('role', 'staff')
+          .neq('id', user.id) // Exclude current user
+      } else if (profile.role === 'superadmin') {
+        // Superadmins see all users except themselves
+        query = query.neq('id', user.id)
+      } else {
+        // Staff see nothing (they shouldn't access this page, but just in case)
+        setUsers([])
+        setLoading(false)
+        return
+      }
+
+      const { data, error: fetchError } = await query.order('created_at', { ascending: false })
 
       if (fetchError) throw fetchError
       setUsers(data || [])
@@ -45,6 +71,18 @@ export default function UserManagement() {
     setError(null)
     setSuccess(null)
     try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        setError('Not authenticated')
+        return
+      }
+
+      // Prevent self-modification
+      if (userId === user.id) {
+        setError('You cannot modify your own role')
+        return
+      }
+
       const { error: updateError } = await supabase
         .from('profiles')
         .update({ role: newRole })

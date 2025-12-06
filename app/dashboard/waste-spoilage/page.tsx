@@ -24,6 +24,11 @@ export default async function WasteSpoilagePage() {
     redirect('/login?error=unauthorized')
   }
 
+  // Superadmins should only access admin page
+  if (profile.role === 'superadmin') {
+    redirect('/admin')
+  }
+
   return (
     <DashboardLayout user={profile}>
       <div>

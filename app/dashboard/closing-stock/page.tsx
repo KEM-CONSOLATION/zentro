@@ -24,6 +24,11 @@ export default async function ClosingStockPage() {
     redirect('/login?error=unauthorized')
   }
 
+  // Superadmins should only access admin page
+  if (profile.role === 'superadmin') {
+    redirect('/admin')
+  }
+
   // Restrict closing stock to admins only
   if (profile.role !== 'admin') {
     redirect('/dashboard?error=unauthorized')
