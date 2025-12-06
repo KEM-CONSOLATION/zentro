@@ -58,9 +58,14 @@ export interface Sale {
   date: string
   recorded_by: string
   description: string | null
+  restocking_id: string | null
+  opening_stock_id: string | null
+  batch_label: string | null
   created_at: string
   item?: Item
   recorded_by_profile?: Profile
+  restocking?: Restocking
+  opening_stock?: OpeningStock
 }
 
 export interface Expense {

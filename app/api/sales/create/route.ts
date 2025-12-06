@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
     })
 
     const body = await request.json()
-    const { item_id, quantity, price_per_unit, total_price, payment_mode, date, description, user_id } = body
+    const { item_id, quantity, price_per_unit, total_price, payment_mode, date, description, user_id, restocking_id, opening_stock_id, batch_label } = body
 
     if (!item_id || !quantity || !date || !user_id) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
@@ -33,8 +33,49 @@ export async function POST(request: NextRequest) {
     let availableStock = 0
     let stockInfo = ''
 
-    if (isPastDate) {
-      // For past dates: Opening Stock + Restocking - Sales already recorded
+    if (restocking_id) {
+      const { data: restocking } = await supabaseAdmin
+        .from('restocking')
+        .select('quantity')
+        .eq('id', restocking_id)
+        .single()
+
+      if (!restocking) {
+        return NextResponse.json({ error: 'Restocking batch not found' }, { status: 404 })
+      }
+
+      const { data: existingSales } = await supabaseAdmin
+        .from('sales')
+        .select('quantity')
+        .eq('restocking_id', restocking_id)
+        .eq('date', date)
+
+      const restockQty = parseFloat(restocking.quantity.toString())
+      const totalSalesSoFar = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
+      availableStock = restockQty - totalSalesSoFar
+      stockInfo = `Restocked: ${restockQty}, Sold from this batch: ${totalSalesSoFar}`
+    } else if (opening_stock_id) {
+      const { data: openingStock } = await supabaseAdmin
+        .from('opening_stock')
+        .select('quantity')
+        .eq('id', opening_stock_id)
+        .single()
+
+      if (!openingStock) {
+        return NextResponse.json({ error: 'Opening stock batch not found' }, { status: 404 })
+      }
+
+      const { data: existingSales } = await supabaseAdmin
+        .from('sales')
+        .select('quantity')
+        .eq('opening_stock_id', opening_stock_id)
+        .eq('date', date)
+
+      const openingQty = parseFloat(openingStock.quantity.toString())
+      const totalSalesSoFar = existingSales?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
+      availableStock = openingQty - totalSalesSoFar
+      stockInfo = `Opening: ${openingQty}, Sold from this batch: ${totalSalesSoFar}`
+    } else if (isPastDate) {
       const { data: openingStock } = await supabaseAdmin
         .from('opening_stock')
         .select('quantity')
@@ -104,7 +145,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create sale record (DO NOT update item quantity - opening stock stays constant)
+    // Validate batch selection
+    if (restocking_id && opening_stock_id) {
+      return NextResponse.json({ error: 'Cannot specify both restocking_id and opening_stock_id' }, { status: 400 })
+    }
+
+    // Create sale record with batch tracking
     const { data: sale, error: saleError } = await supabaseAdmin
       .from('sales')
       .insert({
@@ -116,6 +162,9 @@ export async function POST(request: NextRequest) {
         date,
         recorded_by: user_id,
         description: description || null,
+        restocking_id: restocking_id || null,
+        opening_stock_id: opening_stock_id || null,
+        batch_label: batch_label || null,
       })
       .select()
       .single()

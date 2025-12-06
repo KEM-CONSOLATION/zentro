@@ -169,6 +169,7 @@ export default function SalesForm() {
   const [openingStocks, setOpeningStocks] = useState<(OpeningStock & { item?: Item })[]>([])
   const [restockings, setRestockings] = useState<(Restocking & { item?: Item })[]>([])
   const [selectedItem, setSelectedItem] = useState('')
+  const [selectedBatch, setSelectedBatch] = useState<{ type: 'opening_stock' | 'restocking'; id: string; price: number; label: string } | null>(null)
   const [quantity, setQuantity] = useState('')
   const [pricePerUnit, setPricePerUnit] = useState('')
   const [totalPrice, setTotalPrice] = useState('')
@@ -194,57 +195,11 @@ export default function SalesForm() {
   }, [date, userRole, isPastDate])
 
   useEffect(() => {
-    if (selectedItem && quantity) {
-      let price = 0
-      
-      if (isPastDate) {
-        const openingStock = openingStocks.find(os => os.item_id === selectedItem)
-        const itemRestockings = restockings.filter(r => r.item_id === selectedItem)
-        
-        let totalQuantity = 0
-        let totalValue = 0
-        
-        if (openingStock) {
-          const openingQty = parseFloat(openingStock.quantity.toString())
-          const openingPrice = openingStock.selling_price || 0
-          if (openingQty > 0 && openingPrice > 0) {
-            totalQuantity += openingQty
-            totalValue += openingQty * openingPrice
-          }
-        }
-        
-        itemRestockings.forEach(restocking => {
-          const restockingQty = parseFloat(restocking.quantity.toString())
-          const restockingPrice = restocking.selling_price || restocking.item?.selling_price || 0
-          if (restockingQty > 0 && restockingPrice > 0) {
-            totalQuantity += restockingQty
-            totalValue += restockingQty * restockingPrice
-          }
-        })
-        
-        if (totalQuantity > 0 && totalValue > 0) {
-          price = totalValue / totalQuantity
-        } else if (openingStock && openingStock.selling_price) {
-          price = openingStock.selling_price
-        } else if (itemRestockings.length > 0) {
-          const latestRestocking = itemRestockings[itemRestockings.length - 1]
-          price = latestRestocking.selling_price || latestRestocking.item?.selling_price || 0
-        } else {
-      const selectedItemData = items.find(item => item.id === selectedItem)
-          price = selectedItemData?.selling_price || 0
-        }
-      } else {
-        const selectedItemData = items.find(item => item.id === selectedItem)
-        price = selectedItemData?.selling_price || 0
-      }
-      
-      if (price > 0) {
-        const qty = parseFloat(quantity) || 0
-        setPricePerUnit(price.toFixed(2))
-        setTotalPrice((qty * price).toFixed(2))
-      }
+    if (selectedBatch && quantity) {
+      const qty = parseFloat(quantity) || 0
+      setTotalPrice((qty * selectedBatch.price).toFixed(2))
     }
-  }, [selectedItem, quantity, items, isPastDate, openingStocks, restockings])
+  }, [selectedBatch, quantity])
 
   const checkUserRole = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -279,7 +234,9 @@ export default function SalesForm() {
       .select(`
         *,
         item:items(*),
-        recorded_by_profile:profiles(*)
+        recorded_by_profile:profiles(*),
+        restocking:restocking(*),
+        opening_stock:opening_stock(*)
       `)
       .eq('date', date)
       .order('created_at', { ascending: false })
@@ -446,12 +403,30 @@ export default function SalesForm() {
       }
 
       if (selectedItem) {
+        if (!selectedBatch) {
+          setMessage({ 
+            type: 'error', 
+            text: 'Please select a batch (price) for this item' 
+          })
+          setLoading(false)
+          return
+        }
+
         const quantityValue = parseFloat(quantity)
         
         if (isNaN(quantityValue) || quantityValue <= 0) {
           setMessage({ 
             type: 'error', 
             text: 'Please enter a valid quantity greater than 0' 
+          })
+          setLoading(false)
+          return
+        }
+
+        if (quantityValue > selectedBatch.available) {
+          setMessage({ 
+            type: 'error', 
+            text: `Cannot record sales of ${quantityValue}. Available in this batch: ${selectedBatch.available}` 
           })
           setLoading(false)
           return
@@ -607,6 +582,9 @@ export default function SalesForm() {
         date,
         description: description || null,
               user_id: user.id,
+              restocking_id: selectedBatch.type === 'restocking' ? selectedBatch.id : null,
+              opening_stock_id: selectedBatch.type === 'opening_stock' ? selectedBatch.id : null,
+              batch_label: selectedBatch.label,
             }),
       })
 
@@ -624,6 +602,7 @@ export default function SalesForm() {
       setPaymentMode('cash')
       setDescription('')
       setSelectedItem('')
+      setSelectedBatch(null)
       setDate(format(new Date(), 'yyyy-MM-dd'))
       await fetchSales()
       await fetchItems()
@@ -659,6 +638,7 @@ export default function SalesForm() {
     setPaymentMode('cash')
     setDescription('')
     setSelectedItem('')
+    setSelectedBatch(null)
     setDate(format(new Date(), 'yyyy-MM-dd'))
   }
 
@@ -786,7 +766,12 @@ export default function SalesForm() {
           <select
             id="item"
             value={selectedItem}
-            onChange={(e) => setSelectedItem(e.target.value)}
+            onChange={(e) => {
+              setSelectedItem(e.target.value)
+              setSelectedBatch(null)
+              setPricePerUnit('')
+              setTotalPrice('')
+            }}
             required
             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
           >
@@ -877,6 +862,118 @@ export default function SalesForm() {
             </p>
           )}
         </div>
+
+        {selectedItem && (() => {
+          const normalizedDate = date.split('T')[0]
+          const itemOpeningStock = openingStocks.find(os => {
+            const osDate = os.date.split('T')[0]
+            return os.item_id === selectedItem && osDate === normalizedDate
+          })
+          
+          const itemRestockings = restockings.filter(r => {
+            const restockDate = r.date.split('T')[0]
+            return r.item_id === selectedItem && restockDate === normalizedDate
+          })
+
+          const batches: Array<{ type: 'opening_stock' | 'restocking'; id: string; price: number; label: string; available: number }> = []
+
+          if (itemOpeningStock) {
+            const openingQty = parseFloat(itemOpeningStock.quantity.toString())
+            const openingPrice = itemOpeningStock.selling_price || itemOpeningStock.item?.selling_price || 0
+            const openingCostPrice = itemOpeningStock.cost_price || itemOpeningStock.item?.cost_price || 0
+            
+            const openingSales = sales.filter(s => {
+              const saleDate = s.date.split('T')[0]
+              return s.item_id === selectedItem && saleDate === normalizedDate && s.opening_stock_id === itemOpeningStock.id
+            }).reduce((sum, s) => {
+              if (editingSale && s.id === editingSale.id) return sum
+              return sum + s.quantity
+            }, 0)
+            
+            const available = Math.max(0, openingQty - openingSales)
+            
+            if (available > 0) {
+              const priceLabel = openingPrice > 0 ? `₦${openingPrice.toFixed(2)}` : openingCostPrice > 0 ? `Cost: ₦${openingCostPrice.toFixed(2)}` : 'No price'
+              batches.push({
+                type: 'opening_stock',
+                id: itemOpeningStock.id,
+                price: openingPrice || openingCostPrice,
+                label: `Opening Stock - ${priceLabel} (Available: ${available})`,
+                available
+              })
+            }
+          }
+
+          itemRestockings.forEach(restocking => {
+            const restockQty = parseFloat(restocking.quantity.toString())
+            const restockPrice = restocking.selling_price || restocking.item?.selling_price || 0
+            const restockCostPrice = restocking.cost_price || restocking.item?.cost_price || 0
+            
+            const restockSales = sales.filter(s => {
+              const saleDate = s.date.split('T')[0]
+              return s.item_id === selectedItem && saleDate === normalizedDate && s.restocking_id === restocking.id
+            }).reduce((sum, s) => {
+              if (editingSale && s.id === editingSale.id) return sum
+              return sum + s.quantity
+            }, 0)
+            
+            const available = Math.max(0, restockQty - restockSales)
+            
+            if (available > 0) {
+              const priceLabel = restockPrice > 0 ? `₦${restockPrice.toFixed(2)}` : restockCostPrice > 0 ? `Cost: ₦${restockCostPrice.toFixed(2)}` : 'No price'
+              const priceChanged = (restockPrice > 0 && itemOpeningStock && itemOpeningStock.selling_price && restockPrice !== itemOpeningStock.selling_price) ||
+                                   (restockCostPrice > 0 && itemOpeningStock && itemOpeningStock.cost_price && restockCostPrice !== itemOpeningStock.cost_price)
+              
+              batches.push({
+                type: 'restocking',
+                id: restocking.id,
+                price: restockPrice || restockCostPrice,
+                label: `${priceChanged ? '🆕 ' : ''}Restocked - ${priceLabel} (Available: ${available})`,
+                available
+              })
+            }
+          })
+
+          if (batches.length === 0) {
+            return null
+          }
+
+          return (
+            <div>
+              <label htmlFor="batch" className="block text-sm font-medium text-gray-700 mb-1">
+                Select Batch (Price)
+                <span className="text-xs text-gray-500 ml-1">(Items with different prices are separate batches)</span>
+              </label>
+              <select
+                id="batch"
+                value={selectedBatch ? `${selectedBatch.type}:${selectedBatch.id}` : ''}
+                onChange={(e) => {
+                  const [type, id] = e.target.value.split(':')
+                  const batch = batches.find(b => b.type === type && b.id === id)
+                  if (batch) {
+                    setSelectedBatch(batch)
+                    setPricePerUnit(batch.price.toFixed(2))
+                    if (quantity) {
+                      setTotalPrice((parseFloat(quantity) * batch.price).toFixed(2))
+                    }
+                  }
+                }}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
+              >
+                <option value="">Select a batch</option>
+                {batches.map((batch, idx) => (
+                  <option key={`${batch.type}:${batch.id}`} value={`${batch.type}:${batch.id}`}>
+                    {batch.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-500">
+                Each batch represents items with the same price. Select which batch you're selling from.
+              </p>
+            </div>
+          )
+        })()}
 
         <div>
           <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
@@ -1020,6 +1117,7 @@ export default function SalesForm() {
                 <tr>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Item</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Batch</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Price/Unit</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total Price</th>
@@ -1038,6 +1136,15 @@ export default function SalesForm() {
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
                       {sale.item?.name || 'Unknown'}
+                    </td>
+                    <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
+                      {sale.batch_label ? (
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {sale.batch_label}
+                        </span>
+                      ) : (
+                        <span className="text-gray-400 text-xs">No batch info</span>
+                      )}
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
                       {sale.quantity} {sale.item?.unit || ''}
