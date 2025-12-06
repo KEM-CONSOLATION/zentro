@@ -15,12 +15,16 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('role')
+      .select('role, organization_id')
       .eq('id', user.id)
       .single()
 
-    if (!profile || profile.role !== 'admin') {
+    if (!profile || (profile.role !== 'admin' && profile.role !== 'superadmin')) {
       return NextResponse.json({ error: 'Forbidden: Admin access required' }, { status: 403 })
+    }
+
+    if (!profile.organization_id) {
+      return NextResponse.json({ error: 'You must belong to an organization to create users' }, { status: 400 })
     }
 
     const body = await request.json()
@@ -103,6 +107,7 @@ export async function POST(request: NextRequest) {
               email: newUser.user.email || email,
               full_name: fullName || null,
               role: (role as 'admin' | 'staff') || 'staff',
+              organization_id: profile.organization_id,
             })
 
           if (!insertError) {

@@ -59,7 +59,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
   const [calculating, setCalculating] = useState(false)
   const [editingItems, setEditingItems] = useState<Record<string, EditingItemData>>({})
   const [currentTime, setCurrentTime] = useState<Date | null>(null)
-  const [userRole, setUserRole] = useState<'admin' | 'staff' | null>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'staff' | 'superadmin' | null>(null)
   const isPastDate = selectedDate < today
   const syncingRef = useRef(false) // Prevent infinite loops from sync operations
 
@@ -576,7 +576,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
     if (!report) return
 
     // Only admins can save stock
-    if (userRole !== 'admin') {
+    if (userRole !== 'admin' && userRole !== 'superadmin') {
       alert('Only administrators can record opening and closing stock.')
       return
     }
@@ -696,7 +696,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                   setSelectedDate(selectedDate)
                 }
               }}
-              disabled={userRole !== 'admin'}
+              disabled={userRole !== 'admin' && userRole !== 'superadmin'}
               className={`px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors text-gray-900 ${
                 userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : 'cursor-pointer'
               }`}
@@ -826,7 +826,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                                 min="0"
                                 value={editingItems[item.item_id]?.quantity ?? item.opening_stock}
                                 onChange={(e) => handleValueChange(item.item_id, 'quantity', e.target.value)}
-                                disabled={userRole !== 'admin'}
+                                disabled={userRole !== 'admin' && userRole !== 'superadmin'}
                                 className={`w-24 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
                                   userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
                                 }`}
@@ -863,7 +863,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                                 }
                                 onChange={(e) => handleValueChange(item.item_id, 'cost_price', e.target.value)}
                                 placeholder="0.00"
-                                disabled={userRole !== 'admin'}
+                                disabled={userRole !== 'admin' && userRole !== 'superadmin'}
                                 className={`w-28 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
                                   userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
                                 }`}
@@ -881,7 +881,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
                                 }
                                 onChange={(e) => handleValueChange(item.item_id, 'selling_price', e.target.value)}
                                 placeholder="0.00"
-                                disabled={userRole !== 'admin'}
+                                disabled={userRole !== 'admin' && userRole !== 'superadmin'}
                                 className={`w-28 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-gray-900 ${
                                   userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
                                 }`}
@@ -929,7 +929,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
           </div>
           {isPastDate && (
             <div className="px-6 py-4 border-t border-gray-200 bg-gray-50 flex justify-between items-center">
-              {userRole === 'admin' ? (
+              {(userRole === 'admin' || userRole === 'superadmin') ? (
                 <>
                   {type === 'closing' ? (
                     <button

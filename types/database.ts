@@ -1,12 +1,23 @@
-export type UserRole = 'admin' | 'staff'
+export type UserRole = 'admin' | 'staff' | 'superadmin'
+
+export interface Organization {
+  id: string
+  name: string
+  slug: string
+  created_by: string
+  created_at: string
+  updated_at: string
+}
 
 export interface Profile {
   id: string
   email: string
   full_name: string | null
   role: UserRole
+  organization_id: string | null
   created_at: string
   updated_at: string
+  organization?: Organization
 }
 
 export interface Item {

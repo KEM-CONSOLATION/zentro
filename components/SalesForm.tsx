@@ -179,7 +179,7 @@ export default function SalesForm() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editingSale, setEditingSale] = useState<Sale | null>(null)
-  const [userRole, setUserRole] = useState<'admin' | 'staff' | null>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'staff' | 'superadmin' | null>(null)
   const today = format(new Date(), 'yyyy-MM-dd')
   const isPastDate = date < today
 
@@ -382,7 +382,7 @@ export default function SalesForm() {
       if (!user) throw new Error('Not authenticated')
 
       const today = format(new Date(), 'yyyy-MM-dd')
-      if (userRole !== 'admin' && date !== today) {
+      if (userRole !== 'admin' && userRole !== 'superadmin' && date !== today) {
         setMessage({ 
           type: 'error', 
           text: 'Sales can only be recorded for today\'s date. Please use today\'s date.' 
@@ -717,8 +717,8 @@ export default function SalesForm() {
 
         <div>
           <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
-            Date {userRole !== 'admin' && <span className="text-xs text-gray-500">(Today only)</span>}
-            {userRole === 'admin' && <span className="text-xs text-gray-500">(Admin: Can select past dates)</span>}
+            Date {userRole !== 'admin' && userRole !== 'superadmin' && <span className="text-xs text-gray-500">(Today only)</span>}
+            {(userRole === 'admin' || userRole === 'superadmin') && <span className="text-xs text-gray-500">(Admin: Can select past dates)</span>}
           </label>
           <input
             id="date"
@@ -728,7 +728,7 @@ export default function SalesForm() {
               const selectedDate = e.target.value
               const today = format(new Date(), 'yyyy-MM-dd')
               
-              if (userRole !== 'admin' && selectedDate !== today) {
+              if (userRole !== 'admin' && userRole !== 'superadmin' && selectedDate !== today) {
                 setMessage({ type: 'error', text: 'Sales can only be recorded for today\'s date.' })
                 setDate(today)
                 return
@@ -745,14 +745,14 @@ export default function SalesForm() {
             }}
             max={format(new Date(), 'yyyy-MM-dd')}
             required
-            disabled={userRole !== 'admin'}
+            disabled={userRole !== 'admin' && userRole !== 'superadmin'}
             className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
-              userRole !== 'admin' ? 'bg-gray-50 cursor-not-allowed' : ''
+              userRole !== 'admin' && userRole !== 'superadmin' ? 'bg-gray-50 cursor-not-allowed' : ''
             }`}
-            readOnly={userRole !== 'admin'}
+            readOnly={userRole !== 'admin' && userRole !== 'superadmin'}
           />
           <p className="mt-1 text-xs text-gray-500">
-            {userRole === 'admin' 
+            {userRole === 'admin' || userRole === 'superadmin' 
               ? 'Admins can record sales for past dates to backfill data. Staff can only record for today.' 
               : 'Sales can only be recorded for today to avoid confusion'}
           </p>
@@ -1123,7 +1123,7 @@ export default function SalesForm() {
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Total Price</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Payment Mode</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                  {userRole === 'admin' && (
+                  {(userRole === 'admin' || userRole === 'superadmin') && (
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                   )}
                 </tr>
@@ -1167,7 +1167,7 @@ export default function SalesForm() {
                     <td className="px-3 py-2 text-sm text-gray-900">
                       {sale.description || '-'}
                     </td>
-                    {userRole === 'admin' && (
+                    {(userRole === 'admin' || userRole === 'superadmin') && (
                       <td className="px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
                         <button
                           onClick={() => handleEdit(sale)}

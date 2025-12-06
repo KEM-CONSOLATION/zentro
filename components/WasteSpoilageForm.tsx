@@ -17,7 +17,7 @@ export default function WasteSpoilageForm() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editingRecord, setEditingRecord] = useState<WasteSpoilage | null>(null)
-  const [userRole, setUserRole] = useState<'admin' | 'staff' | null>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'staff' | 'superadmin' | null>(null)
   const today = format(new Date(), 'yyyy-MM-dd')
 
   useEffect(() => {
@@ -381,7 +381,7 @@ export default function WasteSpoilageForm() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Recorded By
                   </th>
-                  {(userRole === 'admin' || date === today) && (
+                  {(userRole === 'admin' || userRole === 'superadmin' || date === today) && (
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
@@ -412,7 +412,7 @@ export default function WasteSpoilageForm() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {record.recorded_by_profile?.full_name || record.recorded_by_profile?.email || 'Unknown'}
                     </td>
-                    {(userRole === 'admin' || record.date === today) && (
+                    {(userRole === 'admin' || userRole === 'superadmin' || record.date === today) && (
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         {record.date === today && (
                           <button

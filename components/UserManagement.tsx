@@ -15,7 +15,7 @@ export default function UserManagement() {
     email: '',
     password: '',
     fullName: '',
-    role: 'staff' as 'admin' | 'staff',
+    role: 'staff' as 'admin' | 'staff' | 'superadmin',
   })
   const [showPassword, setShowPassword] = useState(false)
 
@@ -41,7 +41,7 @@ export default function UserManagement() {
     }
   }
 
-  const updateUserRole = async (userId: string, newRole: 'admin' | 'staff') => {
+  const updateUserRole = async (userId: string, newRole: 'admin' | 'staff' | 'superadmin') => {
     setError(null)
     setSuccess(null)
     try {
@@ -200,7 +200,7 @@ export default function UserManagement() {
               <select
                 id="role"
                 value={newUser.role}
-                onChange={(e) => setNewUser({ ...newUser, role: e.target.value as 'admin' | 'staff' })}
+                onChange={(e) => setNewUser({ ...newUser, role: e.target.value as 'admin' | 'staff' | 'superadmin' })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
               >
                 <option value="staff">Staff</option>
@@ -276,7 +276,9 @@ export default function UserManagement() {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span
                         className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          user.role === 'admin'
+                          user.role === 'superadmin'
+                            ? 'bg-red-100 text-red-800'
+                            : user.role === 'admin'
                             ? 'bg-purple-100 text-purple-800'
                             : 'bg-gray-100 text-gray-800'
                         }`}
@@ -288,7 +290,9 @@ export default function UserManagement() {
                       {new Date(user.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      {user.role === 'admin' ? (
+                      {user.role === 'superadmin' ? (
+                        <span className="text-xs text-red-600 font-semibold">Superadmin</span>
+                      ) : user.role === 'admin' ? (
                         <button
                           onClick={() => updateUserRole(user.id, 'staff')}
                           className="text-indigo-600 hover:text-indigo-900 cursor-pointer"

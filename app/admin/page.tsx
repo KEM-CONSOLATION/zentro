@@ -24,7 +24,7 @@ export default async function AdminPage() {
     redirect('/login?error=unauthorized')
   }
 
-  if (profile.role !== 'admin') {
+  if (profile.role !== 'admin' && profile.role !== 'superadmin') {
     redirect('/dashboard')
   }
 

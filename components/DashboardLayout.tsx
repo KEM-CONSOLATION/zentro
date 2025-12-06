@@ -108,7 +108,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
         </svg>
       ),
     },
-    ...(user.role === 'admin'
+    ...(user.role === 'admin' || user.role === 'superadmin'
       ? [
           {
             name: 'Management',
