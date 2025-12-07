@@ -29,6 +29,15 @@ export async function recalculateClosingStock(
   })
 
   try {
+    // Get user's organization_id
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('organization_id')
+      .eq('id', user_id)
+      .single()
+    
+    const organizationId = profile?.organization_id || null
+
     // Get all items
     const { data: items } = await supabaseAdmin
       .from('items')
@@ -89,7 +98,6 @@ export async function recalculateClosingStock(
       .eq('date', date)
 
     // Calculate and save closing stock for each item
-    // Note: This function recalculates ALL items based on the formula, even if manually entered
     // This ensures consistency: Closing Stock = Opening + Restocking - Sales - Waste/Spoilage
     const closingStockRecords = items.map((item) => {
             // Determine opening stock
@@ -120,6 +128,7 @@ export async function recalculateClosingStock(
           quantity: closingStock,
           date,
           recorded_by: user_id,
+          organization_id: organizationId,
           notes: `Auto-calculated: Opening (${openingStock}) + Restocking (${totalRestocking}) - Sales (${totalSales}) - Waste/Spoilage (${totalWasteSpoilage})`,
         }
       })
@@ -129,7 +138,7 @@ export async function recalculateClosingStock(
       await supabaseAdmin
         .from('closing_stock')
         .upsert(closingStockRecords, {
-          onConflict: 'item_id,date',
+          onConflict: 'item_id,date,organization_id',
         })
     }
   } catch (error) {
@@ -163,6 +172,16 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
       persistSession: false,
     },
   })
+
+  // Get user's organization_id
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('organization_id')
+    .eq('id', user_id)
+    .single()
+  
+  const organizationId = profile?.organization_id || null
+
   // Parse start_date using local time to avoid timezone issues
   const startDateStr = start_date.split('T')[0] // Ensure YYYY-MM-DD format
   if (!/^\d{4}-\d{2}-\d{2}$/.test(startDateStr)) {
@@ -218,8 +237,6 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
       .select('item_id, quantity')
       .eq('date', nextDateStr)
 
-    // Note: existingNextOpeningStock is used to check if opening stock exists, but we always update regardless
-
     // Get all items
     const { data: items } = await supabaseAdmin
       .from('items')
@@ -267,6 +284,7 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
           selling_price: sellingPrice,
           date: nextDateStr,
           recorded_by: user_id,
+          organization_id: organizationId,
           notes,
         }
       })
@@ -276,7 +294,7 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
       const { error: upsertError } = await supabaseAdmin
         .from('opening_stock')
         .upsert(openingStockToUpsert, {
-          onConflict: 'item_id,date',
+          onConflict: 'item_id,date,organization_id',
         })
 
       if (!upsertError) {

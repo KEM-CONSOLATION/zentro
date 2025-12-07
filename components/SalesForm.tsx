@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Item, Sale, Profile, OpeningStock, Restocking } from '@/types/database'
 import { format } from 'date-fns'
@@ -54,12 +54,12 @@ function StockAvailabilityDisplay({
         const salesIncludingNew = totalSales + (quantityToRecord || 0)
 
         if (isPastDate) {
-          const { data: openingStock } = await supabase
+          const { data: openingStockData } = await supabase
             .from('opening_stock')
             .select('quantity')
             .eq('item_id', itemId)
             .eq('date', date)
-            .single()
+            .limit(1)
 
           const { data: restocking } = await supabase
             .from('restocking')
@@ -73,6 +73,7 @@ function StockAvailabilityDisplay({
             .eq('item_id', itemId)
             .eq('date', date)
 
+          const openingStock = openingStockData && openingStockData.length > 0 ? openingStockData[0] : null
           const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
           const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
           const totalWasteSpoilage = wasteSpoilage?.reduce((sum, ws) => sum + parseFloat(ws.quantity.toString()), 0) || 0
@@ -88,12 +89,12 @@ function StockAvailabilityDisplay({
             setStockInfo(`Opening: ${openingQty}, Restocked: ${totalRestocking}, Sold: ${totalSales}, Waste/Spoilage: ${totalWasteSpoilage}`)
           }
         } else {
-          const { data: openingStock } = await supabase
+          const { data: openingStockData } = await supabase
             .from('opening_stock')
             .select('quantity')
             .eq('item_id', itemId)
             .eq('date', date)
-            .single()
+            .limit(1)
 
           const { data: restocking } = await supabase
             .from('restocking')
@@ -107,6 +108,7 @@ function StockAvailabilityDisplay({
             .eq('item_id', itemId)
             .eq('date', date)
 
+          const openingStock = openingStockData && openingStockData.length > 0 ? openingStockData[0] : null
           const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
           const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
           const totalWasteSpoilage = wasteSpoilage?.reduce((sum, ws) => sum + parseFloat(ws.quantity.toString()), 0) || 0
@@ -183,16 +185,169 @@ export default function SalesForm() {
   const today = format(new Date(), 'yyyy-MM-dd')
   const isPastDate = date < today
 
+  // Wrap fetch functions in useCallback to memoize them
+  const fetchSalesCallback = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('sales')
+      .select(`
+        *,
+        item:items(*),
+        recorded_by_profile:profiles(*),
+        restocking:restocking(*),
+        opening_stock:opening_stock(*)
+      `)
+      .eq('date', date)
+      .order('created_at', { ascending: false })
+
+    if (!error && data) {
+      setSales(data)
+    }
+  }, [date])
+
+  const fetchOpeningStockCallback = useCallback(async () => {
+    try {
+      let dateStr = date
+      
+      if (date.includes('T')) {
+        dateStr = date.split('T')[0]
+      } else if (date.includes('/')) {
+        const parts = date.split('/')
+        if (parts.length === 3) {
+          dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`
+        }
+      }
+      
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        setMessage({ 
+          type: 'error', 
+          text: `Invalid date format: ${date}. Please select a valid date.` 
+        })
+        setOpeningStocks([])
+        return
+      }
+      
+      const { data, error } = await supabase
+        .from('opening_stock')
+        .select(`
+          *,
+          item:items(*)
+        `)
+        .eq('date', dateStr)
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        setMessage({ 
+          type: 'error', 
+          text: `Error fetching opening stock: ${error.message}` 
+        })
+        setOpeningStocks([])
+        return
+      }
+
+      if (data && data.length > 0) {
+        const uniqueOpeningStocks = data.reduce((acc, current) => {
+          const existing = acc.find((item: typeof data[0]) => item.item_id === current.item_id)
+          if (!existing) {
+            acc.push(current)
+          } else {
+            const currentDateMatch = current.date === dateStr
+            const existingDateMatch = existing.date === dateStr
+            
+            if (currentDateMatch && !existingDateMatch) {
+              const index = acc.indexOf(existing)
+              acc[index] = current
+            } else if (!currentDateMatch && existingDateMatch) {
+              // Keep existing
+            } else {
+              if (new Date(current.created_at) > new Date(existing.created_at)) {
+                const index = acc.indexOf(existing)
+                acc[index] = current
+              }
+            }
+          }
+          return acc
+        }, [] as typeof data)
+        
+        setOpeningStocks(uniqueOpeningStocks as (OpeningStock & { item?: Item })[])
+        if (message?.type === 'error' && message.text.includes('opening stock')) {
+          setMessage(null)
+        }
+      } else {
+        setOpeningStocks([])
+        if (isPastDate) {
+          setMessage({ 
+            type: 'error', 
+            text: `No opening stock found for ${dateStr}. Please record opening stock first for this date.` 
+          })
+        }
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      setMessage({ 
+        type: 'error', 
+        text: `Failed to fetch opening stock: ${errorMessage}. Please try again.` 
+      })
+      setOpeningStocks([])
+    }
+  }, [date, isPastDate, message])
+
+  const fetchRestockingCallback = useCallback(async () => {
+    try {
+      let dateStr = date
+      if (date.includes('T')) {
+        dateStr = date.split('T')[0]
+      } else if (date.includes('/')) {
+        const parts = date.split('/')
+        if (parts.length === 3) {
+          dateStr = `${parts[2]}-${parts[1]}-${parts[0]}`
+        }
+      }
+      
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        setRestockings([])
+        return
+      }
+      
+      const { data, error } = await supabase
+        .from('restocking')
+        .select(`
+          *,
+          item:items(*)
+        `)
+        .eq('date', dateStr)
+        .order('created_at', { ascending: false })
+
+      if (!error && data) {
+        setRestockings(data as (Restocking & { item?: Item })[])
+      } else if (error) {
+        setRestockings([])
+      }
+    } catch {
+      setRestockings([])
+    }
+  }, [date])
+
   useEffect(() => {
     fetchItems()
-    fetchSales()
+    fetchSalesCallback()
     checkUserRole()
-    fetchOpeningStock()
-    fetchRestocking()
+    fetchOpeningStockCallback()
+    fetchRestockingCallback()
     if (userRole === 'staff' && date !== today) {
       setDate(today)
     }
-  }, [date, userRole, isPastDate])
+  }, [date, userRole, isPastDate, today, fetchSalesCallback, fetchOpeningStockCallback, fetchRestockingCallback])
+
+  // Refresh items when window gains focus (user might have added items in another tab)
+  useEffect(() => {
+    const handleFocus = () => {
+      fetchItems()
+      fetchOpeningStockCallback()
+      fetchRestockingCallback()
+    }
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [fetchOpeningStockCallback, fetchRestockingCallback])
 
   useEffect(() => {
     if (selectedBatch && quantity) {
@@ -204,11 +359,13 @@ export default function SalesForm() {
   const checkUserRole = async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
-      const { data: profile } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
-        .single()
+        .limit(1)
+      
+      const profile = profileData && profileData.length > 0 ? profileData[0] : null
       if (profile) {
         setUserRole(profile.role)
       }
@@ -219,11 +376,13 @@ export default function SalesForm() {
     try {
       const { data, error } = await supabase.from('items').select('*').order('name')
       if (error) {
+        console.error('Error fetching items:', error)
         setMessage({ type: 'error', text: 'Failed to fetch items. Please refresh the page.' })
       } else {
         setItems(data || [])
       }
-    } catch {
+    } catch (error) {
+      console.error('Exception fetching items:', error)
       setMessage({ type: 'error', text: 'Failed to fetch items. Please refresh the page.' })
     }
   }
@@ -363,7 +522,7 @@ export default function SalesForm() {
       } else if (error) {
         setRestockings([])
       }
-    } catch (error) {
+    } catch {
       setRestockings([])
     }
   }
@@ -442,12 +601,13 @@ export default function SalesForm() {
           return
         }
 
-        const { data: freshItem, error: itemError } = await supabase
+        const { data: freshItemData, error: itemError } = await supabase
           .from('items')
           .select('quantity, name, unit')
           .eq('id', selectedItem)
-          .single()
+          .limit(1)
 
+        const freshItem = freshItemData && freshItemData.length > 0 ? freshItemData[0] : null
         if (itemError || !freshItem) {
           setMessage({ 
             type: 'error', 
@@ -474,12 +634,12 @@ export default function SalesForm() {
             return
           }
           
-          const { data: openingStock } = await supabase
+          const { data: openingStockData } = await supabase
             .from('opening_stock')
             .select('quantity')
             .eq('item_id', selectedItem)
             .eq('date', normalizedDate)
-            .single()
+            .limit(1)
 
           const { data: restocking } = await supabase
             .from('restocking')
@@ -493,6 +653,7 @@ export default function SalesForm() {
             .eq('item_id', selectedItem)
             .eq('date', normalizedDate)
 
+          const openingStock = openingStockData && openingStockData.length > 0 ? openingStockData[0] : null
           const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
           const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
           const totalSalesSoFar = existingSales?.reduce((sum, s) => {
@@ -505,12 +666,12 @@ export default function SalesForm() {
         } else {
           const normalizedDate = date.split('T')[0]
           
-          const { data: openingStock } = await supabase
+          const { data: openingStockData } = await supabase
             .from('opening_stock')
             .select('quantity')
             .eq('item_id', selectedItem)
             .eq('date', normalizedDate)
-            .single()
+            .limit(1)
 
           const { data: restocking } = await supabase
             .from('restocking')
@@ -524,6 +685,7 @@ export default function SalesForm() {
             .eq('item_id', selectedItem)
             .eq('date', normalizedDate)
 
+          const openingStock = openingStockData && openingStockData.length > 0 ? openingStockData[0] : null
           const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
           const totalRestocking = restocking?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
           const totalSalesSoFar = existingSales?.reduce((sum, s) => {
@@ -616,6 +778,8 @@ export default function SalesForm() {
       setDate(format(new Date(), 'yyyy-MM-dd'))
       await fetchSales()
       await fetchItems()
+      await fetchOpeningStock()
+      await fetchRestocking()
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to record sales'
       setMessage({ type: 'error', text: errorMessage })
@@ -828,44 +992,70 @@ export default function SalesForm() {
                 </option>
               )
             ) : (
-              items.map((item) => {
-                const normalizedDate = date.split('T')[0]
-                
-                const itemOpeningStock = openingStocks.find(os => {
-                  const osDate = os.date.split('T')[0]
-                  return os.item_id === item.id && osDate === normalizedDate
+              items.length > 0 ? (
+                items.map((item) => {
+                  const normalizedDate = date.split('T')[0]
+                  
+                  const itemOpeningStock = openingStocks.find(os => {
+                    const osDate = os.date.split('T')[0]
+                    return os.item_id === item.id && osDate === normalizedDate
+                  })
+                  const openingQty = itemOpeningStock ? parseFloat(itemOpeningStock.quantity.toString()) : 0
+                  
+                  const itemRestocking = restockings.filter(r => {
+                    const restockDate = r.date.split('T')[0]
+                    return r.item_id === item.id && restockDate === normalizedDate
+                  })
+                  const totalRestocking = itemRestocking.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0)
+                  
+                  const itemSales = sales.filter(s => {
+                    const saleDate = s.date.split('T')[0]
+                    return s.item_id === item.id && saleDate === normalizedDate
+                  })
+                  const totalSales = itemSales.reduce((sum, s) => {
+                    if (editingSale && s.id === editingSale.id) return sum
+                    return sum + s.quantity
+                  }, 0)
+                  
+                  const available = Math.max(0, openingQty + totalRestocking - totalSales)
+                  
+                  const displayText = totalRestocking > 0
+                    ? `${item.name} (${item.unit}) - Available: ${available > 0 ? available : 0} (Opening Stock: ${openingQty}, Restocked: ${totalRestocking})`
+                    : `${item.name} (${item.unit}) - Available: ${available > 0 ? available : 0} (Opening Stock: ${openingQty})`
+                  
+                  return (
+                    <option key={item.id} value={item.id}>
+                      {displayText}
+                    </option>
+                  )
                 })
-                const openingQty = itemOpeningStock ? parseFloat(itemOpeningStock.quantity.toString()) : 0
-                
-                const itemRestocking = restockings.filter(r => {
-                  const restockDate = r.date.split('T')[0]
-                  return r.item_id === item.id && restockDate === normalizedDate
-                })
-                const totalRestocking = itemRestocking.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0)
-                
-                const itemSales = sales.filter(s => {
-                  const saleDate = s.date.split('T')[0]
-                  return s.item_id === item.id && saleDate === normalizedDate
-                })
-                const totalSales = itemSales.reduce((sum, s) => {
-                  if (editingSale && s.id === editingSale.id) return sum
-                  return sum + s.quantity
-                }, 0)
-                
-                const available = Math.max(0, openingQty + totalRestocking - totalSales)
-                
-                const displayText = totalRestocking > 0
-                  ? `${item.name} (${item.unit}) - Available: ${available > 0 ? available : 0} (Opening Stock: ${openingQty}, Restocked: ${totalRestocking})`
-                  : `${item.name} (${item.unit}) - Available: ${available > 0 ? available : 0} (Opening Stock: ${openingQty})`
-                
-                return (
-                  <option key={item.id} value={item.id}>
-                    {displayText}
-                  </option>
-                )
-              })
+              ) : (
+                <option value="" disabled>
+                  No items found. Please add items first.
+                </option>
+              )
             )}
           </select>
+          <div className="mt-1 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                fetchItems()
+                fetchOpeningStock()
+                fetchRestocking()
+                setMessage({ type: 'success', text: 'Items list refreshed!' })
+                setTimeout(() => setMessage(null), 2000)
+              }}
+              className="text-xs text-indigo-600 hover:text-indigo-800 underline"
+            >
+              Refresh Items List
+            </button>
+            {items.length > 0 && (
+              <span className="text-xs text-gray-500">
+                ({items.length} items loaded)
+              </span>
+            )}
+          </div>
           {isPastDate && openingStocks.length === 0 && (
             <p className="mt-1 text-xs text-red-500">
               No opening stock found for this date. Please record opening stock first.
@@ -972,14 +1162,14 @@ export default function SalesForm() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
               >
                 <option value="">Select a batch</option>
-                {batches.map((batch, idx) => (
+                {batches.map((batch) => (
                   <option key={`${batch.type}:${batch.id}`} value={`${batch.type}:${batch.id}`}>
                     {batch.label}
                   </option>
                 ))}
               </select>
               <p className="mt-1 text-xs text-gray-500">
-                Each batch represents items with the same price. Select which batch you're selling from.
+                Each batch represents items with the same price. Select which batch you&apos;re selling from.
               </p>
             </div>
           )

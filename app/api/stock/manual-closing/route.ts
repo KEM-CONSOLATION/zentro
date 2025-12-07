@@ -20,12 +20,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    // Get user's organization_id
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('organization_id')
+      .eq('id', user_id)
+      .single()
+    
+    const organizationId = profile?.organization_id || null
+
     // Validate items array
     const closingStockRecords = items.map((item: { item_id: string; quantity: number }) => ({
       item_id: item.item_id,
       quantity: item.quantity,
       date,
       recorded_by: user_id,
+      organization_id: organizationId,
       notes: 'Manually entered closing stock',
     }))
 
@@ -33,7 +43,7 @@ export async function POST(request: NextRequest) {
     const { error: upsertError } = await supabaseAdmin
       .from('closing_stock')
       .upsert(closingStockRecords, {
-        onConflict: 'item_id,date',
+        onConflict: 'item_id,date,organization_id',
       })
 
     if (upsertError) {

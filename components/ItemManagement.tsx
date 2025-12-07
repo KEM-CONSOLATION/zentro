@@ -68,7 +68,26 @@ export default function ItemManagement() {
         if (error) throw error
         setMessage({ type: 'success', text: 'Item updated successfully!' })
       } else {
-        const { error } = await supabase.from('items').insert({
+        // Get user's organization_id to ensure proper assignment
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error('Not authenticated')
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('id', user.id)
+          .single()
+
+        const itemData: {
+          name: string
+          unit: string
+          quantity: number
+          low_stock_threshold: number
+          cost_price: number
+          selling_price: number
+          description: string | null
+          organization_id?: string | null
+        } = {
           name: capitalizedName,
           unit: formData.unit,
           quantity: parseInt(formData.quantity, 10) || 0,
@@ -76,10 +95,19 @@ export default function ItemManagement() {
           cost_price: parseFloat(formData.cost_price) || 0,
           selling_price: parseFloat(formData.selling_price) || 0,
           description: formData.description || null,
-        })
+        }
+
+        if (profile?.organization_id) {
+          itemData.organization_id = profile.organization_id
+        }
+
+        const { error } = await supabase.from('items').insert(itemData)
 
         if (error) throw error
-        setMessage({ type: 'success', text: 'Item created successfully!' })
+        setMessage({ 
+          type: 'success', 
+          text: 'Item created successfully! Remember to restock it to make it available for sales.' 
+        })
       }
 
       setFormData({ name: '', unit: 'pieces', quantity: '', low_stock_threshold: '10', cost_price: '', selling_price: '', description: '' })

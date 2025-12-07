@@ -21,6 +21,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing date or user_id' }, { status: 400 })
     }
 
+    // Get user's organization_id
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('organization_id')
+      .eq('id', user_id)
+      .single()
+    
+    const organizationId = profile?.organization_id || null
+
     // Reject future dates
     const today = new Date().toISOString().split('T')[0]
     if (date > today) {
@@ -105,6 +114,7 @@ export async function POST(request: NextRequest) {
         quantity: closingStock,
         date,
         recorded_by: user_id,
+        organization_id: organizationId,
         notes: `Auto-calculated: Opening (${openingStock}) + Restocking (${totalRestocking}) - Sales (${totalSales}) - Waste/Spoilage (${totalWasteSpoilage})`,
       }
     })
@@ -113,7 +123,7 @@ export async function POST(request: NextRequest) {
     const { error: upsertError } = await supabaseAdmin
       .from('closing_stock')
       .upsert(closingStockRecords, {
-        onConflict: 'item_id,date',
+        onConflict: 'item_id,date,organization_id',
       })
 
     if (upsertError) {

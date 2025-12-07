@@ -256,6 +256,58 @@ export default function RestockingForm() {
                   // Don't throw - restocking can still succeed even if opening stock price update fails
                 }
               }
+            } else {
+              const { data: { user: currentUser } } = await supabase.auth.getUser()
+              if (currentUser) {
+                const { data: profile } = await supabase
+                  .from('profiles')
+                  .select('organization_id')
+                  .eq('id', currentUser.id)
+                  .single()
+                
+                const openingStockData: {
+                  item_id: string
+                  quantity: number
+                  date: string
+                  recorded_by: string
+                  notes: string
+                  cost_price?: number | null
+                  selling_price?: number | null
+                  organization_id?: string | null
+                } = {
+                  item_id: selectedItem,
+                  quantity: 0,
+                  date,
+                  recorded_by: currentUser.id,
+                  notes: 'Auto-created from restocking',
+                  organization_id: profile?.organization_id || null,
+                }
+                
+                if (costPrice) {
+                  const costPriceValue = parseFloat(costPrice)
+                  if (!isNaN(costPriceValue) && costPriceValue >= 0) {
+                    openingStockData.cost_price = costPriceValue
+                  }
+                }
+                
+                if (sellingPrice) {
+                  const sellingPriceValue = parseFloat(sellingPrice)
+                  if (!isNaN(sellingPriceValue) && sellingPriceValue >= 0) {
+                    openingStockData.selling_price = sellingPriceValue
+                  }
+                }
+                
+                const { error: createOpeningStockError, data: createdOpeningStock } = await supabase
+                  .from('opening_stock')
+                  .upsert(openingStockData, {
+                    onConflict: 'item_id,date,organization_id',
+                  })
+                  .select()
+                
+                if (createOpeningStockError) {
+                  console.error('Failed to create opening stock:', createOpeningStockError)
+                }
+              }
             }
           }
         }

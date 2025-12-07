@@ -20,6 +20,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
+    // Get user's organization_id
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('organization_id')
+      .eq('id', user_id)
+      .single()
+    
+    const organizationId = profile?.organization_id || null
+
     // Reject future dates
     const today = new Date().toISOString().split('T')[0]
     if (date > today) {
@@ -39,22 +48,20 @@ export async function POST(request: NextRequest) {
       selling_price: item.selling_price ?? null,
       date,
       recorded_by: user_id,
+      organization_id: organizationId,
       notes: 'Manually entered opening stock',
     }))
 
-    // Upsert opening stock records (update if exists, insert if not)
     const { error: upsertError } = await supabaseAdmin
       .from('opening_stock')
       .upsert(openingStockRecords, {
-        onConflict: 'item_id,date',
+        onConflict: 'item_id,date,organization_id',
       })
 
     if (upsertError) {
       return NextResponse.json({ error: upsertError.message }, { status: 500 })
     }
 
-    // Update item prices if provided in opening stock
-    // Use the latest prices from opening stock records to update items table
     for (const record of openingStockRecords) {
       if (record.cost_price !== null && record.cost_price !== undefined) {
         const { error: itemUpdateError } = await supabaseAdmin

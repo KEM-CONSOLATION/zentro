@@ -88,8 +88,6 @@ export async function DELETE(request: NextRequest) {
     )
 
     // Delete user from auth.users (this will cascade delete profile)
-    // Note: Foreign keys on recorded_by columns should be set to ON DELETE SET NULL
-    // Run supabase/fix_profile_delete_cascade.sql if deletion fails due to foreign key constraints
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(userId)
 
     if (deleteError) {

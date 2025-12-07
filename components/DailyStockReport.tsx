@@ -158,7 +158,6 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
           const nextDay = String(nextDate.getDate()).padStart(2, '0')
           const nextDateStr = `${nextYear}-${nextMonth}-${nextDay}`
           
-          console.log(`[fetchReport - closing stock] Date: ${dateStr}, Next date: ${nextDateStr}`)
           const today = format(new Date(), 'yyyy-MM-dd')
           if (nextDateStr <= today) {
             // Use cascade update to ensure next day's opening stock matches this closing stock
@@ -228,6 +227,15 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return { success: false, error: new Error('User not found') }
 
+      // Get user's organization_id
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single()
+      
+      const organizationId = profile?.organization_id || null
+
       // Validate and calculate previous date
       if (!date || !date.trim()) {
         return { success: false, error: new Error('Invalid date provided') }
@@ -255,7 +263,6 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
       const prevDay = String(dateObj.getDate()).padStart(2, '0')
       const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`
       
-      console.log(`[ensureOpeningStockMatchesPreviousClosing] Date: ${dateStr}, Previous date: ${prevDateStr}`)
 
       // Get previous day's closing stock
       const { data: prevClosingStock } = await supabase
@@ -316,6 +323,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
             selling_price: sellingPrice,
             date,
             recorded_by: user.id,
+            organization_id: organizationId,
             notes: closing
               ? isUpdate
                 ? `Auto-updated to match previous day's closing stock (${prevDateStr}). Previous value: ${currentOpening?.quantity || 'N/A'}`
@@ -336,7 +344,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
           const { error: upsertError } = await supabase
             .from('opening_stock')
             .upsert(openingStockToUpsert, {
-              onConflict: 'item_id,date',
+              onConflict: 'item_id,date,organization_id',
             })
 
           if (!upsertError) {
@@ -399,7 +407,6 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
       const prevDay = String(dateObj.getDate()).padStart(2, '0')
       const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`
       
-      console.log(`[handleRecalculateOpeningStock] Date: ${dateStr}, Previous date: ${prevDateStr}`)
 
       // Step 1: First, recalculate the previous day's closing stock
       // This ensures we have the correct closing stock based on all transactions

@@ -161,9 +161,5 @@ BEGIN
     ALTER TABLE public.organizations 
     DROP CONSTRAINT organizations_created_by_fkey;
   END IF;
-  
-  -- Note: organizations.created_by references auth.users, not profiles
-  -- We'll keep it as RESTRICT since we don't want to lose organization ownership info
-  -- But we can make it nullable and handle it in the application
 END $$;
 
