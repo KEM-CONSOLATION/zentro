@@ -471,7 +471,10 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
         const result = await response.json()
         if (result.success && result.records_created > 0) {
           // Refresh the report to show created values
-          const reportResponse = await fetch(`/api/stock/report?date=${selectedDate}`)
+          // Get current user to pass user_id for organization filtering
+          const { data: { user } } = await supabase.auth.getUser()
+          const user_id = user?.id || ''
+          const reportResponse = await fetch(`/api/stock/report?date=${selectedDate}${user_id ? `&user_id=${user_id}` : ''}`)
           const reportData = await reportResponse.json()
           if (reportData.success) {
             setReport(reportData)

@@ -1,12 +1,30 @@
--- =====================================================
--- FIX PROFILE DELETE CASCADE
--- =====================================================
--- Updates foreign key constraints to allow user deletion
--- Changes recorded_by foreign keys to ON DELETE SET NULL
--- This allows deleting users even if they have records
--- =====================================================
+ALTER TABLE public.opening_stock 
+  ALTER COLUMN recorded_by DROP NOT NULL;
 
--- Step 1: Make recorded_by columns nullable (required for ON DELETE SET NULL)
+ALTER TABLE public.closing_stock 
+  ALTER COLUMN recorded_by DROP NOT NULL;
+
+ALTER TABLE public.sales 
+  ALTER COLUMN recorded_by DROP NOT NULL;
+
+ALTER TABLE public.expenses 
+  ALTER COLUMN recorded_by DROP NOT NULL;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'restocking') THEN
+    ALTER TABLE public.restocking 
+    ALTER COLUMN recorded_by DROP NOT NULL;
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'waste_spoilage') THEN
+    ALTER TABLE public.waste_spoilage 
+    ALTER COLUMN recorded_by DROP NOT NULL;
+  END IF;
+END $$;
 ALTER TABLE public.opening_stock 
   ALTER COLUMN recorded_by DROP NOT NULL;
 
@@ -37,10 +55,8 @@ BEGIN
   END IF;
 END $$;
 
--- Step 2: Update opening_stock.recorded_by foreign key to allow deletion
 DO $$
 BEGIN
-  -- Drop existing constraint if it exists
   IF EXISTS (
     SELECT 1 FROM pg_constraint 
     WHERE conname = 'opening_stock_recorded_by_fkey'
@@ -49,7 +65,6 @@ BEGIN
     DROP CONSTRAINT opening_stock_recorded_by_fkey;
   END IF;
   
-  -- Add new constraint with SET NULL
   ALTER TABLE public.opening_stock
   ADD CONSTRAINT opening_stock_recorded_by_fkey 
   FOREIGN KEY (recorded_by) 
@@ -57,7 +72,6 @@ BEGIN
   ON DELETE SET NULL;
 END $$;
 
--- Update closing_stock.recorded_by to allow deletion
 DO $$
 BEGIN
   IF EXISTS (
@@ -75,7 +89,6 @@ BEGIN
   ON DELETE SET NULL;
 END $$;
 
--- Update sales.recorded_by to allow deletion
 DO $$
 BEGIN
   IF EXISTS (
@@ -93,7 +106,6 @@ BEGIN
   ON DELETE SET NULL;
 END $$;
 
--- Update expenses.recorded_by to allow deletion
 DO $$
 BEGIN
   IF EXISTS (
@@ -111,7 +123,6 @@ BEGIN
   ON DELETE SET NULL;
 END $$;
 
--- Update restocking.recorded_by if table exists
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'restocking') THEN
@@ -131,7 +142,6 @@ BEGIN
   END IF;
 END $$;
 
--- Update waste_spoilage.recorded_by if table exists
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'waste_spoilage') THEN
@@ -151,7 +161,6 @@ BEGIN
   END IF;
 END $$;
 
--- Update organizations.created_by to allow deletion (set to NULL if creator is deleted)
 DO $$
 BEGIN
   IF EXISTS (

@@ -7,6 +7,17 @@ export async function recalculateClosingStock(
   date: string,
   user_id: string
 ) {
+  // Normalize date format to YYYY-MM-DD (handle any format variations)
+  if (date.includes('T')) {
+    date = date.split('T')[0]
+  } else if (date.includes('/')) {
+    const parts = date.split('/')
+    if (parts.length === 3) {
+      // DD/MM/YYYY to YYYY-MM-DD
+      date = `${parts[2]}-${parts[1]}-${parts[0]}`
+    }
+  }
+
   // Reject future dates
   const today = new Date().toISOString().split('T')[0]
   if (date > today) {
@@ -38,11 +49,17 @@ export async function recalculateClosingStock(
     
     const organizationId = profile?.organization_id || null
 
-    // Get all items
-    const { data: items } = await supabaseAdmin
+    // Get all items for this organization
+    let itemsQuery = supabaseAdmin
       .from('items')
       .select('*')
       .order('name')
+    
+    if (organizationId) {
+      itemsQuery = itemsQuery.eq('organization_id', organizationId)
+    }
+    
+    const { data: items } = await itemsQuery
 
     if (!items) return
 
@@ -67,39 +84,59 @@ export async function recalculateClosingStock(
     const prevDay = String(dateObj.getDate()).padStart(2, '0')
     const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`
 
+    // Helper function to add organization filter
+    const addOrgFilter = (query: any) => {
+      return organizationId ? query.eq('organization_id', organizationId) : query
+    }
+
     // Get previous day's closing stock
-    const { data: prevClosingStock } = await supabaseAdmin
+    let prevClosingStockQuery = supabaseAdmin
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', prevDateStr)
+    prevClosingStockQuery = addOrgFilter(prevClosingStockQuery)
+    const { data: prevClosingStock } = await prevClosingStockQuery
 
     // Get today's opening stock
-    const { data: todayOpeningStock } = await supabaseAdmin
+    let todayOpeningStockQuery = supabaseAdmin
       .from('opening_stock')
       .select('item_id, quantity')
       .eq('date', date)
+    todayOpeningStockQuery = addOrgFilter(todayOpeningStockQuery)
+    const { data: todayOpeningStock } = await todayOpeningStockQuery
 
     // Get today's sales
-    const { data: todaySales } = await supabaseAdmin
+    let todaySalesQuery = supabaseAdmin
       .from('sales')
       .select('item_id, quantity')
       .eq('date', date)
+    todaySalesQuery = addOrgFilter(todaySalesQuery)
+    const { data: todaySales } = await todaySalesQuery
 
     // Get today's restocking
-    const { data: todayRestocking } = await supabaseAdmin
+    let todayRestockingQuery = supabaseAdmin
       .from('restocking')
       .select('item_id, quantity')
       .eq('date', date)
+    todayRestockingQuery = addOrgFilter(todayRestockingQuery)
+    const { data: todayRestocking } = await todayRestockingQuery
 
     // Get today's waste/spoilage
-    const { data: todayWasteSpoilage } = await supabaseAdmin
+    let todayWasteSpoilageQuery = supabaseAdmin
       .from('waste_spoilage')
       .select('item_id, quantity')
       .eq('date', date)
+    todayWasteSpoilageQuery = addOrgFilter(todayWasteSpoilageQuery)
+    const { data: todayWasteSpoilage } = await todayWasteSpoilageQuery
+
+    // Filter items by organization_id if specified
+    const filteredItems = organizationId 
+      ? items.filter(item => item.organization_id === organizationId)
+      : items
 
     // Calculate and save closing stock for each item
     // This ensures consistency: Closing Stock = Opening + Restocking - Sales - Waste/Spoilage
-    const closingStockRecords = items.map((item) => {
+    const closingStockRecords = filteredItems.map((item) => {
             // Determine opening stock
             // Quantities only come from opening/closing stock - if not present, use zero
             const todayOpening = todayOpeningStock?.find((os) => os.item_id === item.id)
@@ -152,6 +189,17 @@ export async function recalculateClosingStock(
  * This continues until we reach today or a manually entered opening stock
  */
 export async function cascadeUpdateFromDate(start_date: string, user_id: string) {
+  // Normalize date format to YYYY-MM-DD (handle any format variations)
+  if (start_date.includes('T')) {
+    start_date = start_date.split('T')[0]
+  } else if (start_date.includes('/')) {
+    const parts = start_date.split('/')
+    if (parts.length === 3) {
+      // DD/MM/YYYY to YYYY-MM-DD
+      start_date = `${parts[2]}-${parts[1]}-${parts[0]}`
+    }
+  }
+
   // Reject future dates
   const today = new Date().toISOString().split('T')[0]
   if (start_date > today) {
@@ -213,11 +261,18 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
     nextDate.setDate(nextDate.getDate() + 1)
     const nextDateStr = formatDateLocal(nextDate)
 
+    // Helper function to add organization filter
+    const addOrgFilter = (query: any) => {
+      return organizationId ? query.eq('organization_id', organizationId) : query
+    }
+
     // Get closing stock for current date
-    const { data: closingStock } = await supabaseAdmin
+    let closingStockQuery = supabaseAdmin
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', currentDateStr)
+    closingStockQuery = addOrgFilter(closingStockQuery)
+    const { data: closingStock } = await closingStockQuery
 
     if (!closingStock || closingStock.length === 0) {
       // No closing stock for this date, move to next day
@@ -226,22 +281,32 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
     }
 
     // Get opening stock prices from current date to carry forward
-    const { data: currentOpeningStock } = await supabaseAdmin
+    let currentOpeningStockQuery = supabaseAdmin
       .from('opening_stock')
       .select('item_id, cost_price, selling_price')
       .eq('date', currentDateStr)
+    currentOpeningStockQuery = addOrgFilter(currentOpeningStockQuery)
+    const { data: currentOpeningStock } = await currentOpeningStockQuery
 
     // Check if opening stock already exists for next date (manually entered)
-    const { data: existingNextOpeningStock } = await supabaseAdmin
+    let existingNextOpeningStockQuery = supabaseAdmin
       .from('opening_stock')
       .select('item_id, quantity')
       .eq('date', nextDateStr)
+    existingNextOpeningStockQuery = addOrgFilter(existingNextOpeningStockQuery)
+    const { data: existingNextOpeningStock } = await existingNextOpeningStockQuery
 
-    // Get all items
-    const { data: items } = await supabaseAdmin
+    // Get all items for this organization
+    let itemsQuery = supabaseAdmin
       .from('items')
       .select('*')
       .order('name')
+    
+    if (organizationId) {
+      itemsQuery = itemsQuery.eq('organization_id', organizationId)
+    }
+    
+    const { data: items } = await itemsQuery
 
     if (!items) {
       currentDate = nextDate

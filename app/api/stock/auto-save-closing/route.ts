@@ -15,10 +15,21 @@ export async function POST(request: NextRequest) {
     })
 
     const body = await request.json()
-    const { date, user_id } = body
+    let { date, user_id } = body
 
     if (!date || !user_id) {
       return NextResponse.json({ error: 'Missing date or user_id' }, { status: 400 })
+    }
+
+    // Normalize date format to YYYY-MM-DD (handle any format variations)
+    if (date.includes('T')) {
+      date = date.split('T')[0]
+    } else if (date.includes('/')) {
+      const parts = date.split('/')
+      if (parts.length === 3) {
+        // DD/MM/YYYY to YYYY-MM-DD
+        date = `${parts[2]}-${parts[1]}-${parts[0]}`
+      }
     }
 
     // Get user's organization_id
@@ -42,48 +53,74 @@ export async function POST(request: NextRequest) {
     prevDate.setDate(prevDate.getDate() - 1)
     const prevDateStr = prevDate.toISOString().split('T')[0]
 
-    // Get all items
-    const { data: items, error: itemsError } = await supabaseAdmin
+    // Get all items for this organization
+    let itemsQuery = supabaseAdmin
       .from('items')
       .select('*')
       .order('name')
+    
+    if (organizationId) {
+      itemsQuery = itemsQuery.eq('organization_id', organizationId)
+    }
+    
+    const { data: items, error: itemsError } = await itemsQuery
 
     if (itemsError || !items) {
       return NextResponse.json({ error: 'Failed to fetch items' }, { status: 500 })
     }
 
+    // Helper function to add organization filter
+    const addOrgFilter = (query: any) => {
+      return organizationId ? query.eq('organization_id', organizationId) : query
+    }
+
     // Get previous day's closing stock (or use item quantity as fallback)
-    const { data: prevClosingStock } = await supabaseAdmin
+    let prevClosingStockQuery = supabaseAdmin
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', prevDateStr)
+    prevClosingStockQuery = addOrgFilter(prevClosingStockQuery)
+    const { data: prevClosingStock } = await prevClosingStockQuery
 
     // Get today's opening stock
-    const { data: todayOpeningStock } = await supabaseAdmin
+    let todayOpeningStockQuery = supabaseAdmin
       .from('opening_stock')
       .select('item_id, quantity')
       .eq('date', date)
+    todayOpeningStockQuery = addOrgFilter(todayOpeningStockQuery)
+    const { data: todayOpeningStock } = await todayOpeningStockQuery
 
     // Get today's sales
-    const { data: todaySales } = await supabaseAdmin
+    let todaySalesQuery = supabaseAdmin
       .from('sales')
       .select('item_id, quantity')
       .eq('date', date)
+    todaySalesQuery = addOrgFilter(todaySalesQuery)
+    const { data: todaySales } = await todaySalesQuery
 
     // Get today's restocking
-    const { data: todayRestocking } = await supabaseAdmin
+    let todayRestockingQuery = supabaseAdmin
       .from('restocking')
       .select('item_id, quantity')
       .eq('date', date)
+    todayRestockingQuery = addOrgFilter(todayRestockingQuery)
+    const { data: todayRestocking } = await todayRestockingQuery
 
     // Get today's waste/spoilage
-    const { data: todayWasteSpoilage } = await supabaseAdmin
+    let todayWasteSpoilageQuery = supabaseAdmin
       .from('waste_spoilage')
       .select('item_id, quantity')
       .eq('date', date)
+    todayWasteSpoilageQuery = addOrgFilter(todayWasteSpoilageQuery)
+    const { data: todayWasteSpoilage } = await todayWasteSpoilageQuery
+
+    // Filter items by organization_id if specified
+    const filteredItems = organizationId 
+      ? items.filter(item => item.organization_id === organizationId)
+      : items
 
     // Calculate and save closing stock for each item
-    const closingStockRecords = items.map((item) => {
+    const closingStockRecords = filteredItems.map((item) => {
           // Determine opening stock: use today's opening stock if exists, otherwise previous closing stock, otherwise zero
           // Quantities only come from opening/closing stock - if not present, use zero
           const todayOpening = todayOpeningStock?.find((os) => os.item_id === item.id)

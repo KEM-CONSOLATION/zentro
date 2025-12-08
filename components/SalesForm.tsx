@@ -242,10 +242,8 @@ export default function SalesForm() {
       .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error fetching sales:', error, 'Date:', dateStr)
       setSales([])
     } else {
-      console.log('Fetched sales:', data?.length || 0, 'for date:', dateStr)
       setSales(data || [])
     }
   }, [date, normalizeDate])

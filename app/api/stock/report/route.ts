@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { createClient as createServerClient } from '@/lib/supabase/server'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -13,8 +14,23 @@ export async function GET(request: NextRequest) {
       },
     })
 
+    // Get authenticated user from session
+    const supabase = await createServerClient()
+    const { data: { user } } = await supabase.auth.getUser()
+
     const { searchParams } = new URL(request.url)
-    const date = searchParams.get('date') || new Date().toISOString().split('T')[0]
+    let date = searchParams.get('date') || new Date().toISOString().split('T')[0]
+    
+    // Normalize date format to YYYY-MM-DD (handle any format variations)
+    if (date.includes('T')) {
+      date = date.split('T')[0]
+    } else if (date.includes('/')) {
+      const parts = date.split('/')
+      if (parts.length === 3) {
+        // DD/MM/YYYY to YYYY-MM-DD
+        date = `${parts[2]}-${parts[1]}-${parts[0]}`
+      }
+    }
 
     // Reject future dates
     const today = new Date().toISOString().split('T')[0]
@@ -22,11 +38,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Cannot generate reports for future dates' }, { status: 400 })
     }
 
-    // Get all items
-    const { data: items, error: itemsError } = await supabaseAdmin
+    // Get user's organization_id from authenticated session
+    let organizationId: string | null = null
+    if (user) {
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single()
+      organizationId = profile?.organization_id || null
+    }
+
+    // Get items - filter by organization_id if available
+    let itemsQuery = supabaseAdmin
       .from('items')
       .select('*')
       .order('name')
+    
+    if (organizationId) {
+      itemsQuery = itemsQuery.eq('organization_id', organizationId)
+    }
+    
+    const { data: items, error: itemsError } = await itemsQuery
 
     if (itemsError || !items) {
       return NextResponse.json({ error: 'Failed to fetch items' }, { status: 500 })
@@ -54,48 +87,70 @@ export async function GET(request: NextRequest) {
     const prevDay = String(dateObj.getDate()).padStart(2, '0')
     const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`
 
+    // Helper function to add organization filter
+    const addOrgFilter = (query: any) => {
+      return organizationId ? query.eq('organization_id', organizationId) : query
+    }
+
     // Get existing opening stock for this date (if manually entered)
-    const { data: existingOpeningStock } = await supabaseAdmin
+    let openingStockQuery = supabaseAdmin
       .from('opening_stock')
       .select('item_id, quantity, cost_price, selling_price')
       .eq('date', date)
+    openingStockQuery = addOrgFilter(openingStockQuery)
+    const { data: existingOpeningStock } = await openingStockQuery
 
     // Get existing closing stock for this date (if manually entered)
-    const { data: existingClosingStock } = await supabaseAdmin
+    let closingStockQuery = supabaseAdmin
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', date)
+    closingStockQuery = addOrgFilter(closingStockQuery)
+    const { data: existingClosingStock } = await closingStockQuery
 
     // Get previous day's closing stock
-    const { data: prevClosingStock, error: closingStockError } = await supabaseAdmin
+    let prevClosingStockQuery = supabaseAdmin
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', prevDateStr)
+    prevClosingStockQuery = addOrgFilter(prevClosingStockQuery)
+    const { data: prevClosingStock, error: closingStockError } = await prevClosingStockQuery
 
     if (closingStockError) {
       // Error fetching previous closing stock - will fall back to item quantity
     }
 
     // Get sales for this date
-    const { data: dateSales } = await supabaseAdmin
+    let salesQuery = supabaseAdmin
       .from('sales')
       .select('item_id, quantity')
       .eq('date', date)
+    salesQuery = addOrgFilter(salesQuery)
+    const { data: dateSales } = await salesQuery
 
     // Get restocking for this date
-    const { data: dateRestocking } = await supabaseAdmin
+    let restockingQuery = supabaseAdmin
       .from('restocking')
       .select('item_id, quantity')
       .eq('date', date)
+    restockingQuery = addOrgFilter(restockingQuery)
+    const { data: dateRestocking } = await restockingQuery
 
     // Get waste/spoilage for this date
-    const { data: dateWasteSpoilage } = await supabaseAdmin
+    let wasteSpoilageQuery = supabaseAdmin
       .from('waste_spoilage')
       .select('item_id, quantity')
       .eq('date', date)
+    wasteSpoilageQuery = addOrgFilter(wasteSpoilageQuery)
+    const { data: dateWasteSpoilage } = await wasteSpoilageQuery
+
+    // Filter items by organization_id if specified
+    const filteredItems = organizationId 
+      ? items.filter(item => item.organization_id === organizationId)
+      : items
 
     // Calculate opening and closing stock for each item
-    const report = items.map((item) => {
+    const report = filteredItems.map((item) => {
       // Opening stock: ALWAYS use previous day's closing stock if available for consistency
       // Only fall back to manually entered opening stock if no previous closing stock exists
       // If neither exists, use zero (not item.quantity) - quantities are only from opening/closing stock
@@ -119,12 +174,12 @@ export async function GET(request: NextRequest) {
       const itemWasteSpoilage = dateWasteSpoilage?.filter((w) => w.item_id === item.id) || []
       const totalWasteSpoilage = itemWasteSpoilage.reduce((sum, w) => sum + parseFloat(w.quantity.toString()), 0)
 
-      // Closing stock: Use existing record if manually entered, otherwise calculate
-      // Formula: Opening + Restocking - Sales - Waste/Spoilage
+      // Closing stock: ALWAYS calculate from formula (Opening + Restocking - Sales - Waste/Spoilage)
+      // This ensures accuracy even if there's an existing record with incorrect data
+      // The existingClosing flag is kept for UI purposes (to show if it was manually entered)
       const existingClosing = existingClosingStock?.find((cs) => cs.item_id === item.id)
-      const closingStock = existingClosing
-        ? parseFloat(existingClosing.quantity.toString())
-        : Math.max(0, openingStock + totalRestocking - totalSales - totalWasteSpoilage)
+      // Always calculate closing stock from the formula for accuracy
+      const closingStock = Math.max(0, openingStock + totalRestocking - totalSales - totalWasteSpoilage)
 
       return {
         item_id: item.id,
