@@ -30,11 +30,29 @@ export default function ProfitLossView() {
   const calculateProfitLoss = async () => {
     setLoading(true)
     try {
+      // Get user's organization_id for filtering
+      const { data: { user } } = await supabase.auth.getUser()
+      let organizationId: string | null = null
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('id', user.id)
+          .single()
+        organizationId = profile?.organization_id || null
+      }
+
       // Fetch sales for the date
-      const { data: sales } = await supabase
+      let salesQuery = supabase
         .from('sales')
         .select('*, item:items(*)')
         .eq('date', selectedDate)
+      
+      if (organizationId) {
+        salesQuery = salesQuery.eq('organization_id', organizationId)
+      }
+      
+      const { data: sales } = await salesQuery
 
       if (!sales) return
 
@@ -83,10 +101,16 @@ export default function ProfitLossView() {
       setTotalProfit(profitTotal)
 
       // Fetch expenses
-      const { data: expenses } = await supabase
+      let expensesQuery = supabase
         .from('expenses')
         .select('amount')
         .eq('date', selectedDate)
+      
+      if (organizationId) {
+        expensesQuery = expensesQuery.eq('organization_id', organizationId)
+      }
+      
+      const { data: expenses } = await expensesQuery
 
       const expensesTotal = expenses?.reduce((sum: number, exp: { amount: number }) => sum + (exp.amount || 0), 0) || 0
       setTotalExpenses(expensesTotal)

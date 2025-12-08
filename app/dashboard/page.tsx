@@ -2,11 +2,11 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DashboardLayout from '@/components/DashboardLayout'
 import Link from 'next/link'
-import ProfitLossView from '@/components/ProfitLossView'
-import ExpensesForm from '@/components/ExpensesForm'
 import SalesTrendChart from '@/components/SalesTrendChart'
 import TopItemsChart from '@/components/TopItemsChart'
 import DashboardStatsCards from '@/components/DashboardStatsCards'
+import ProfitLossStatsCards from '@/components/ProfitLossStatsCards'
+import ExpenseStatsCards from '@/components/ExpenseStatsCards'
 import LowStockAlerts from '@/components/LowStockAlerts'
 
 export default async function DashboardPage() {
@@ -43,7 +43,20 @@ export default async function DashboardPage() {
           <p className="mt-2 text-gray-600">Overview of your inventory and sales performance</p>
         </div>
 
-        <DashboardStatsCards />
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Inventory & Sales Overview</h2>
+          <DashboardStatsCards />
+        </div>
+
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Today's Profit & Loss</h2>
+          <ProfitLossStatsCards />
+        </div>
+
+        <div className="mt-8">
+          <h2 className="text-xl font-semibold text-gray-900 mb-4">Expenses & Balance</h2>
+          <ExpenseStatsCards />
+        </div>
 
         <div className="mt-8">
           <LowStockAlerts />
@@ -52,14 +65,6 @@ export default async function DashboardPage() {
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
           <SalesTrendChart />
           <TopItemsChart />
-        </div>
-
-        <div className="mt-8">
-          <ProfitLossView />
-        </div>
-
-        <div className="mt-8">
-          <ExpensesForm />
         </div>
       </div>
     </DashboardLayout>
