@@ -184,7 +184,7 @@ export default function SalesTrendChart() {
             />
             <Tooltip 
               formatter={(value: number) => [`₦${value.toFixed(2)}`, 'Sales']}
-              contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+              contentStyle={{ backgroundColor: '#fff', color: '#000', border: '1px solid #e5e7eb', borderRadius: '8px' }}
             />
             <Legend />
             <Line 
