@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Item, Restocking, Profile } from '@/types/database'
 import { format } from 'date-fns'
@@ -20,6 +20,59 @@ export default function RestockingForm() {
   const [userRole, setUserRole] = useState<'admin' | 'staff' | 'superadmin' | null>(null)
   const [openingStock, setOpeningStock] = useState<number | null>(null)
   const [currentTotal, setCurrentTotal] = useState<number | null>(null)
+  const [filterDate, setFilterDate] = useState<string>('') // Date filter for records table
+
+  const fetchRestockings = useCallback(async () => {
+    // Get user's organization_id for filtering
+    const { data: { user } } = await supabase.auth.getUser()
+    let organizationId: string | null = null
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single()
+      organizationId = profile?.organization_id || null
+    }
+
+    let restockingQuery = supabase
+      .from('restocking')
+      .select(`
+        *,
+        item:items(*),
+        recorded_by_profile:profiles(*)
+      `)
+    
+    // Filter by organization_id
+    if (organizationId) {
+      restockingQuery = restockingQuery.eq('organization_id', organizationId)
+    }
+    
+    // Filter by date if filterDate is set
+    if (filterDate) {
+      // Normalize date format
+      let normalizedDate = filterDate
+      if (filterDate.includes('T')) {
+        normalizedDate = filterDate.split('T')[0]
+      } else if (filterDate.includes('/')) {
+        const parts = filterDate.split('/')
+        if (parts.length === 3) {
+          // DD/MM/YYYY to YYYY-MM-DD
+          normalizedDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+        }
+      }
+      restockingQuery = restockingQuery.eq('date', normalizedDate)
+    }
+    
+    const { data, error } = await restockingQuery
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (!error && data) {
+      setRestockings(data)
+    }
+  }, [filterDate])
 
   useEffect(() => {
     fetchItems()
@@ -30,7 +83,7 @@ export default function RestockingForm() {
     if (userRole === 'staff') {
       setDate(today)
     }
-  }, [userRole])
+  }, [userRole, fetchRestockings])
 
   useEffect(() => {
     if (selectedItem && date) {
@@ -111,23 +164,6 @@ export default function RestockingForm() {
       // Fallback to 0 if calculation fails
       setOpeningStock(0)
       setCurrentTotal(0)
-    }
-  }
-
-  const fetchRestockings = async () => {
-    const { data, error } = await supabase
-      .from('restocking')
-      .select(`
-        *,
-        item:items(*),
-        recorded_by_profile:profiles(*)
-      `)
-      .order('date', { ascending: false })
-      .order('created_at', { ascending: false })
-      .limit(50)
-
-    if (!error && data) {
-      setRestockings(data)
     }
   }
 
@@ -633,9 +669,32 @@ export default function RestockingForm() {
         </div>
       </form>
 
-      {restockings.length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3">Recent Restocking Records</h3>
+      <div className="mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-lg font-semibold text-gray-900">Recent Restocking Records</h3>
+          <div className="flex items-center gap-2">
+            <label htmlFor="filterDate" className="text-sm text-gray-600 whitespace-nowrap">
+              Filter by Date:
+            </label>
+            <input
+              type="date"
+              id="filterDate"
+              value={filterDate}
+              onChange={(e) => setFilterDate(e.target.value)}
+              className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+            />
+            {filterDate && (
+              <button
+                type="button"
+                onClick={() => setFilterDate('')}
+                className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+        {restockings.length > 0 ? (
           <div className="overflow-x-auto -mx-6 px-6">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -709,8 +768,12 @@ export default function RestockingForm() {
               </tbody>
             </table>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            {filterDate ? `No restocking records found for ${format(new Date(filterDate), 'MMM dd, yyyy')}` : 'No restocking records found'}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
