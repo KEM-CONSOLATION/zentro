@@ -251,7 +251,19 @@ export default function SalesForm() {
       return
     }
     
-    const { data, error } = await supabase
+    // Get user's organization_id for filtering
+    const { data: { user } } = await supabase.auth.getUser()
+    let organizationId: string | null = null
+    if (user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('organization_id')
+        .eq('id', user.id)
+        .single()
+      organizationId = profile?.organization_id || null
+    }
+    
+    let salesQuery = supabase
       .from('sales')
       .select(`
         *,
@@ -261,7 +273,10 @@ export default function SalesForm() {
         opening_stock:opening_stock(*)
       `)
       .eq('date', dateStr)
-      .order('created_at', { ascending: false })
+    if (organizationId) {
+      salesQuery = salesQuery.eq('organization_id', organizationId)
+    }
+    const { data, error } = await salesQuery.order('created_at', { ascending: false })
 
     if (error) {
       setSales([])
@@ -292,14 +307,29 @@ export default function SalesForm() {
         return
       }
       
-      const { data, error } = await supabase
+      // Get user's organization_id for filtering
+      const { data: { user } } = await supabase.auth.getUser()
+      let organizationId: string | null = null
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('id', user.id)
+          .single()
+        organizationId = profile?.organization_id || null
+      }
+      
+      let openingStockQuery = supabase
         .from('opening_stock')
         .select(`
           *,
           item:items(*)
         `)
         .eq('date', dateStr)
-        .order('created_at', { ascending: false })
+      if (organizationId) {
+        openingStockQuery = openingStockQuery.eq('organization_id', organizationId)
+      }
+      const { data, error } = await openingStockQuery.order('created_at', { ascending: false })
 
       if (error) {
         setMessage({ 
@@ -374,14 +404,29 @@ export default function SalesForm() {
         return
       }
       
-      const { data, error } = await supabase
+      // Get user's organization_id for filtering
+      const { data: { user } } = await supabase.auth.getUser()
+      let organizationId: string | null = null
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('id', user.id)
+          .single()
+        organizationId = profile?.organization_id || null
+      }
+      
+      let restockingQuery = supabase
         .from('restocking')
         .select(`
           *,
           item:items(*)
         `)
         .eq('date', dateStr)
-        .order('created_at', { ascending: false })
+      if (organizationId) {
+        restockingQuery = restockingQuery.eq('organization_id', organizationId)
+      }
+      const { data, error } = await restockingQuery.order('created_at', { ascending: false })
 
       if (!error && data) {
         setRestockings(data as (Restocking & { item?: Item })[])
@@ -487,11 +532,21 @@ export default function SalesForm() {
         })
       })
 
-      // Auto-select the best batch: prefer restocking batches with available stock, then opening stock
+      // Auto-select the best batch: prefer batches with the most available stock
+      // This ensures we select the batch that can fulfill the largest quantity
       if (batches.length > 0) {
-        const bestBatch = batches.find(b => b.type === 'restocking' && b.available > 0) || 
-                         batches.find(b => b.type === 'opening_stock' && b.available > 0) ||
-                         batches[0]
+        // Sort batches by available stock (descending), then prefer restocking over opening stock
+        const sortedBatches = [...batches].sort((a, b) => {
+          if (b.available !== a.available) {
+            return b.available - a.available // More available stock first
+          }
+          // If same availability, prefer restocking
+          if (a.type === 'restocking' && b.type === 'opening_stock') return -1
+          if (a.type === 'opening_stock' && b.type === 'restocking') return 1
+          return 0
+        })
+        
+        const bestBatch = sortedBatches.find(b => b.available > 0) || sortedBatches[0]
         
         if (bestBatch) {
           setSelectedBatch({
