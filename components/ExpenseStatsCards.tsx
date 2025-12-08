@@ -81,11 +81,14 @@ export default function ExpenseStatsCards() {
   const isToday = selectedDate === format(new Date(), 'yyyy-MM-dd')
   const dateLabel = isToday ? 'today' : format(new Date(selectedDate), 'MMM dd, yyyy')
   const previousDateLabel = format(subDays(new Date(selectedDate), 1), 'MMM dd, yyyy')
+  const sectionTitle = isToday 
+    ? 'Expenses & Balance' 
+    : `Expenses & Balance - ${format(new Date(selectedDate), 'MMM dd, yyyy')}`
 
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-gray-900">Expenses & Balance</h2>
+        <h2 className="text-xl font-semibold text-gray-900">{sectionTitle}</h2>
         <div className="flex items-center gap-2">
           <label htmlFor="expense-date" className="text-sm text-gray-600 whitespace-nowrap">
             Filter by Date:

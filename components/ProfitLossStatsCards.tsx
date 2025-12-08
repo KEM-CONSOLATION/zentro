@@ -119,10 +119,15 @@ export default function ProfitLossStatsCards() {
     )
   }
 
+  const isToday = selectedDate === format(new Date(), 'yyyy-MM-dd')
+  const sectionTitle = isToday 
+    ? "Today's Profit & Loss" 
+    : `Profit & Loss - ${format(new Date(selectedDate), 'MMM dd, yyyy')}`
+
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-gray-900">Today&apos;s Profit & Loss</h2>
+        <h2 className="text-xl font-semibold text-gray-900">{sectionTitle}</h2>
         <div className="flex items-center gap-2">
           <label htmlFor="profit-date" className="text-sm text-gray-600 whitespace-nowrap">
             Filter by Date:
