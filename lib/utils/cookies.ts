@@ -17,6 +17,7 @@ export const COOKIE_KEYS = {
   USER_PREFERENCES: 'user_preferences',
   FEATURE_FLAGS: 'feature_flags',
   LAST_ORGANIZATION: 'last_organization_id',
+  TOUR_COMPLETED: 'tour_completed',
 } as const
 
 /**
@@ -123,6 +124,21 @@ export function setFeatureFlags(flags: Record<string, boolean>): void {
 export function isFeatureEnabled(flagName: string): boolean {
   const flags = getFeatureFlags()
   return flags?.[flagName] === true
+}
+
+/**
+ * Tour helpers
+ */
+export function hasCompletedTour(): boolean {
+  return getCookie(COOKIE_KEYS.TOUR_COMPLETED) === 'true'
+}
+
+export function markTourCompleted(): void {
+  setCookie(COOKIE_KEYS.TOUR_COMPLETED, 'true')
+}
+
+export function clearTourCompleted(): void {
+  removeCookie(COOKIE_KEYS.TOUR_COMPLETED)
 }
 
 /**

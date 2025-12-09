@@ -35,7 +35,7 @@ export default function BranchSelector() {
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2" data-tour="branch-selector">
       <label
         htmlFor="branch-selector"
         className="text-sm font-medium text-gray-700 whitespace-nowrap"

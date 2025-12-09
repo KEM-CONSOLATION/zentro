@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import Link from 'next/link'
@@ -12,6 +12,8 @@ import OrganizationLogo, {
 } from './OrganizationLogo'
 import NotificationCenter from './NotificationCenter'
 import BranchSelector from './BranchSelector'
+import UserTour from './UserTour'
+import { hasCompletedTour } from '@/lib/utils/cookies'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -24,6 +26,26 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [organization, setOrganization] = useState<Organization | null>(null)
   const [loadingOrg, setLoadingOrg] = useState(true)
+  const [runTour, setRunTour] = useState(false)
+
+  const tourTargets: Record<string, string> = useMemo(() => {
+    return {
+      '/dashboard': 'nav-dashboard',
+      '/dashboard/opening-stock': 'nav-opening',
+      '/dashboard/restocking': 'nav-restocking',
+      '/dashboard/closing-stock': 'nav-closing',
+      '/dashboard/sales': 'nav-sales',
+      '/dashboard/history': 'nav-history',
+      '/dashboard/reports': 'nav-reports',
+      '/dashboard/profit-loss': 'nav-profit-loss',
+      '/dashboard/expenses': 'nav-expenses',
+      '/dashboard/waste-spoilage': 'nav-waste',
+      '/dashboard/recipes': 'nav-recipes',
+      '/dashboard/inventory-valuation': 'nav-valuation',
+      '/dashboard/transfers': 'nav-transfers',
+      '/admin': user.role === 'superadmin' ? 'nav-organizations' : 'nav-users',
+    }
+  }, [user.role])
 
   useEffect(() => {
     if (user.organization_id && user.role !== 'superadmin') {
@@ -32,6 +54,12 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
       setLoadingOrg(false)
     }
   }, [user.organization_id, user.role])
+
+  useEffect(() => {
+    if (!hasCompletedTour()) {
+      setRunTour(true)
+    }
+  }, [])
 
   const fetchOrganization = async () => {
     try {
@@ -313,7 +341,11 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
               ) : (
                 <OrganizationLogo organization={organization} size="md" />
               )}
-              <h1 className="text-xl font-bold" style={{ color: brandColor }}>
+              <h1
+                className="text-xl font-bold"
+                style={{ color: brandColor }}
+                data-tour="dashboard-header"
+              >
                 {loadingOrg ? '...' : appName}
               </h1>
             </div>
@@ -353,6 +385,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
                         }
                       : {}
                   }
+                  data-tour={tourTargets[item.href]}
                 >
                   <span className={`mr-3 ${active ? 'text-white' : 'text-gray-400'}`}>
                     {item.icon}
@@ -415,7 +448,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
               </svg>
             </button>
             <div className="flex-1" />
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3" data-tour="topbar-actions">
               {user.role !== 'superadmin' && (
                 <>
                   <BranchSelector />
@@ -424,6 +457,23 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
                   </div>
                 </>
               )}
+              <button
+                type="button"
+                onClick={() => setRunTour(true)}
+                className="hidden sm:inline-flex items-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                title="Run quick tour"
+                data-tour="tour-trigger"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 18h.01M12 14a4 4 0 10-4-4"
+                  />
+                </svg>
+                Take tour
+              </button>
               <div className="hidden lg:block">
                 <h2 className="text-lg font-semibold text-gray-900">
                   {user.role === 'superadmin'
@@ -461,7 +511,10 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
           </div>
         </div>
 
-        <main className="py-6 px-4 sm:px-6 lg:px-8">{children}</main>
+        <main className="py-6 px-4 sm:px-6 lg:px-8">
+          <UserTour user={user} run={runTour} onClose={() => setRunTour(false)} />
+          {children}
+        </main>
       </div>
     </div>
   )

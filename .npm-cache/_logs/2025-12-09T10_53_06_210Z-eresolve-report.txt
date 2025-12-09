@@ -1,0 +1,18 @@
+'Log files:
+/Users/techieconso/restaurant-inventory/.npm-cache/_logs/2025-12-09T10_53_06_210Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: restaurant-inventory@0.1.0
+Found: react@19.2.0
+node_modules/react
+  react@"19.2.0" from the root project
+
+Could not resolve dependency:
+peer react@"15 - 18" from react-joyride@2.9.3
+node_modules/react-joyride
+  react-joyride@"*" from the root project
+
+Fix the upstream dependency conflict, or retry
+this command with --force or --legacy-peer-deps
+to accept an incorrect (and potentially broken) dependency resolution.
