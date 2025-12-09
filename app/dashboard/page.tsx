@@ -8,6 +8,7 @@ import DashboardStatsCards from '@/components/DashboardStatsCards'
 import ProfitLossStatsCards from '@/components/ProfitLossStatsCards'
 import ExpenseStatsCards from '@/components/ExpenseStatsCards'
 import LowStockAlerts from '@/components/LowStockAlerts'
+import DashboardExportButton from '@/components/DashboardExportButton'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -38,9 +39,12 @@ export default async function DashboardPage() {
   return (
     <DashboardLayout user={profile}>
       <div>
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="mt-2 text-gray-600">Overview of your inventory and sales performance</p>
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+            <p className="mt-2 text-gray-600">Overview of your inventory and sales performance</p>
+          </div>
+          <DashboardExportButton />
         </div>
 
         <DashboardStatsCards />

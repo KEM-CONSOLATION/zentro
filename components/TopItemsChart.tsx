@@ -206,7 +206,7 @@ export default function TopItemsChart() {
             <YAxis 
               type="category" 
               dataKey="name" 
-              tick={{ fontSize: 12 }}
+              tick={{ fontSize: 12, fontWeight: 'bold', textRendering: 'geometricPrecision' }}
               width={120}
             />
             <Tooltip 
@@ -214,7 +214,7 @@ export default function TopItemsChart() {
                 if (name === 'quantity') return [value, 'Quantity']
                 return [`₦${value.toFixed(2)}`, 'Sales']
               }}
-              contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }}
+              contentStyle={{ backgroundColor: '#fff', color: '#000', border: '1px solid #e5e7eb', borderRadius: '8px' }}
             />
             <Legend />
             <Bar dataKey="quantity" name="Quantity Sold" fill="#4f46e5" radius={[0, 4, 4, 0]}>
