@@ -44,6 +44,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'User profile not found' }, { status: 404 })
     }
 
+    // Note: All authenticated users (staff, branch_manager, admin) can record sales
+    // RLS policies enforce organization and branch-level access control
+    // Superadmins are blocked at the frontend level
+
     const organization_id = profile.organization_id
 
     // Determine effective branch_id
@@ -59,6 +63,15 @@ export async function POST(request: NextRequest) {
     const today = new Date().toISOString().split('T')[0]
     if (date > today) {
       return NextResponse.json({ error: 'Cannot record sales for future dates' }, { status: 400 })
+    }
+
+    // Staff and branch_manager can only record sales for today's date
+    // Only admins can record sales for past dates (for backfilling)
+    if ((profile.role === 'staff' || profile.role === 'branch_manager') && date < today) {
+      return NextResponse.json(
+        { error: 'Staff and branch managers can only record sales for today\'s date' },
+        { status: 403 }
+      )
     }
 
     // Check if this is a past date

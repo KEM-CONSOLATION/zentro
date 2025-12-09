@@ -7,7 +7,7 @@ import { format } from 'date-fns'
 import { useAuth } from '@/lib/hooks/useAuth'
 
 export default function RestockingForm() {
-  const { organizationId, branchId } = useAuth()
+  const { organizationId, branchId, isAdmin, isSuperAdmin, profile } = useAuth()
   const [items, setItems] = useState<Item[]>([])
   const [restockings, setRestockings] = useState<
     (Restocking & { item?: Item; recorded_by_profile?: Profile })[]
@@ -21,7 +21,7 @@ export default function RestockingForm() {
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [editingRestocking, setEditingRestocking] = useState<Restocking | null>(null)
-  const [userRole, setUserRole] = useState<'admin' | 'staff' | 'superadmin' | null>(null)
+  const [userRole, setUserRole] = useState<'admin' | 'staff' | 'superadmin' | 'branch_manager' | null>(null)
   const [openingStock, setOpeningStock] = useState<number | null>(null)
   const [currentTotal, setCurrentTotal] = useState<number | null>(null)
   const [filterDate, setFilterDate] = useState<string>('') // Date filter for records table
@@ -73,12 +73,12 @@ export default function RestockingForm() {
     fetchItems()
     fetchRestockings()
     checkUserRole()
-    // Ensure date is always today for staff, but allow past dates for admins
+    // Ensure date is always today for branch managers, but allow past dates for admins
     const today = format(new Date(), 'yyyy-MM-dd')
-    if (userRole === 'staff') {
+    if (!isAdmin) {
       setDate(today)
     }
-  }, [userRole, fetchRestockings])
+  }, [userRole, fetchRestockings, isAdmin])
 
   useEffect(() => {
     if (selectedItem && date) {
@@ -100,17 +100,23 @@ export default function RestockingForm() {
   }, [selectedItem, date, items])
 
   const checkUserRole = async () => {
+    // Use profile from useAuth hook if available, otherwise fetch
+    if (profile?.role) {
+      setUserRole(profile.role as 'admin' | 'staff' | 'superadmin' | 'branch_manager')
+      return
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser()
     if (user) {
-      const { data: profile } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single()
-      if (profile) {
-        setUserRole(profile.role)
+      if (profileData) {
+        setUserRole(profileData.role as 'admin' | 'staff' | 'superadmin' | 'branch_manager')
       }
     }
   }
@@ -204,7 +210,7 @@ export default function RestockingForm() {
       if (!user) throw new Error('Not authenticated')
 
       // Superadmins cannot perform restocking operations
-      if (userRole === 'superadmin') {
+      if (isSuperAdmin) {
         setMessage({
           type: 'error',
           text: 'Superadmins cannot perform restocking operations. Please contact the organization admin.',
@@ -213,9 +219,20 @@ export default function RestockingForm() {
         return
       }
 
-      // Restrict restocking to today only for staff, allow past dates for admins
+      // Staff cannot perform restocking operations - only managers and admins can
+      const userRole = profile?.role || null
+      if (userRole === 'staff') {
+        setMessage({
+          type: 'error',
+          text: 'Staff cannot record restocking. Only managers and admins can perform restocking operations.',
+        })
+        setLoading(false)
+        return
+      }
+
+      // Restrict restocking to today only for branch managers, allow past dates for admins
       const today = format(new Date(), 'yyyy-MM-dd')
-      if (userRole !== 'admin' && date !== today) {
+      if (!isAdmin && date !== today) {
         setMessage({
           type: 'error',
           text: "Restocking can only be recorded for today's date. Please use today's date.",
@@ -459,13 +476,19 @@ export default function RestockingForm() {
   const handleEdit = (restocking: Restocking) => {
     const today = format(new Date(), 'yyyy-MM-dd')
     // Superadmins cannot edit restocking
-    if (userRole === 'superadmin') {
+    if (isSuperAdmin) {
       setMessage({ type: 'error', text: 'Superadmins cannot edit restocking records.' })
       return
     }
 
-    // Only allow editing today's restocking for staff, but allow past dates for admins
-    if (userRole !== 'admin' && restocking.date !== today) {
+    // Staff cannot edit restocking
+    if (profile?.role === 'staff') {
+      setMessage({ type: 'error', text: 'Staff cannot edit restocking records.' })
+      return
+    }
+
+    // Only allow editing today's restocking for branch managers, but allow past dates for admins
+    if (!isAdmin && restocking.date !== today) {
       setMessage({
         type: 'error',
         text: 'Can only edit restocking records for today. Past dates cannot be modified.',
@@ -517,6 +540,20 @@ export default function RestockingForm() {
     setLoading(false)
   }
 
+  // Block staff from accessing restocking form
+  if (profile?.role === 'staff') {
+    return (
+      <div className="bg-white shadow rounded-lg p-6">
+        <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded">
+          <p className="font-medium">Access Restricted</p>
+          <p className="text-sm mt-1">
+            Staff members cannot record restocking. Only managers and admins can perform restocking operations.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="bg-white shadow rounded-lg p-6">
       <h2 className="text-xl font-semibold text-gray-900 mb-4">
@@ -541,10 +578,10 @@ export default function RestockingForm() {
         <div>
           <label htmlFor="date" className="block text-sm font-medium text-gray-700 mb-1">
             Date{' '}
-            {userRole !== 'admin' && userRole !== 'superadmin' && (
+            {!isAdmin && (
               <span className="text-xs text-gray-500">(Today only)</span>
             )}
-            {(userRole === 'admin' || userRole === 'superadmin') && (
+            {isAdmin && (
               <span className="text-xs text-gray-500">(Admin: Can select past dates)</span>
             )}
           </label>
@@ -556,8 +593,8 @@ export default function RestockingForm() {
               const selectedDate = e.target.value
               const today = format(new Date(), 'yyyy-MM-dd')
 
-              // Staff can only use today's date
-              if (userRole !== 'admin' && selectedDate !== today) {
+              // Branch managers can only use today's date
+              if (!isAdmin && selectedDate !== today) {
                 setMessage({
                   type: 'error',
                   text: "Restocking can only be recorded for today's date.",
@@ -578,17 +615,15 @@ export default function RestockingForm() {
             }}
             max={format(new Date(), 'yyyy-MM-dd')}
             required
-            disabled={userRole !== 'admin' && userRole !== 'superadmin'}
+            disabled={!isAdmin}
             className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
-              userRole !== 'admin' && userRole !== 'superadmin'
-                ? 'bg-gray-50 cursor-not-allowed'
-                : ''
+              !isAdmin ? 'bg-gray-50 cursor-not-allowed' : ''
             }`}
-            readOnly={userRole !== 'admin' && userRole !== 'superadmin'}
+            readOnly={!isAdmin}
           />
           <p className="mt-1 text-xs text-gray-500">
-            {userRole === 'admin' || userRole === 'superadmin'
-              ? 'Admins can record restocking for past dates to backfill data. Staff can only record for today.'
+            {isAdmin
+              ? 'Admins can record restocking for past dates to backfill data. Branch managers can only record for today.'
               : 'Restocking can only be recorded for today to avoid confusion'}
           </p>
         </div>
@@ -784,7 +819,7 @@ export default function RestockingForm() {
                   <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Recorded By
                   </th>
-                  {(userRole === 'admin' || userRole === 'superadmin') && (
+                  {isAdmin && (
                     <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">
                       Actions
                     </th>
@@ -844,7 +879,7 @@ export default function RestockingForm() {
                         restocking.recorded_by_profile?.email ||
                         'Unknown'}
                     </td>
-                    {(userRole === 'admin' || userRole === 'superadmin') && (
+                    {isAdmin && (
                       <td className="px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
                         <button
                           onClick={() => handleEdit(restocking)}

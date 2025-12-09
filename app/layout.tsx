@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'La Cuisine - Inventory System',
-  description: 'Track opening stock, closing stock, and daily sales for La Cuisine',
+  title: 'Zentro - Inventory Management System',
+  description: 'Track opening stock, closing stock, and daily sales with Zentro',
 }
 
 export default function RootLayout({

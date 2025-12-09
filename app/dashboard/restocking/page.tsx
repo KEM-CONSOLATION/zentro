@@ -29,6 +29,11 @@ export default async function RestockingPage() {
     redirect('/admin')
   }
 
+  // Staff cannot access restocking page - only managers and admins can
+  if (profile.role === 'staff') {
+    redirect('/dashboard?error=restocking_restricted')
+  }
+
   return (
     <DashboardLayout user={profile}>
       <div>

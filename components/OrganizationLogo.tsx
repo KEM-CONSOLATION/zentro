@@ -62,17 +62,15 @@ export default function OrganizationLogo({
     )
   }
 
-  // Text-based logo (first two letters of the name)
-  // const initials = displayName
-  //   .split(' ')
-  //   .map(word => word[0])
-  //   .join('')
-  //   .toUpperCase()
-  //   .slice(0, 2) || displayName.slice(0, 2).toUpperCase()
-
-  // return (
-  //   <div className={`${sizeClasses[size]} ${className}`} style={{ color: brandColor }}>
-  //     {initials}
-  //   </div>
-  // )
+  // Fallback to Zentro logo if no organization logo
+  const { width, height } = imageSizes[size]
+  return (
+    <Image
+      src="/Zentro.jpeg"
+      alt={APP_NAME}
+      width={width}
+      height={height}
+      className={`object-contain ${className}`}
+    />
+  )
 }

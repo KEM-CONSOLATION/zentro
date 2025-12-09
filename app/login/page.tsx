@@ -2,6 +2,7 @@
 
 import { useState, Suspense, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
+import Image from 'next/image'
 import { supabase } from '@/lib/supabase/client'
 import { getAppName, getDefaultBrandColor } from '@/components/OrganizationLogo'
 
@@ -110,12 +111,19 @@ function LoginForm() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 px-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8">
-        <div className=" mb-2">
-          <h1 className="text-3xl font-bold text-center" style={{ color: brandColor }}>
-            {appName}
-          </h1>
-        </div>
+        <div className="flex flex-col items-center">
+          <Image
+            src="/Zentro.jpeg"
+            alt={appName}
+            width={120}
+            height={120}
+            className="object-contain"
+            priority
+          />
         <p className="text-center text-gray-600 mb-8">Sign in to your account</p>
+
+          
+        </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
           {error && (
@@ -224,13 +232,21 @@ export default function LoginPage() {
       fallback={
         <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 px-4">
           <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8">
-            <div className="mb-2">
-              <h1
+            <div className="flex flex-col items-center">
+              <Image
+                src="/Zentro.jpeg"
+                alt={getAppName()}
+                width={120}
+                height={120}
+                className="object-contain"
+                priority
+              />
+              {/* <h1
                 className="text-3xl font-bold text-center"
                 style={{ color: getDefaultBrandColor() }}
               >
                 {getAppName()}
-              </h1>
+              </h1> */}
             </div>
             <p className="text-center text-gray-600">Loading...</p>
           </div>

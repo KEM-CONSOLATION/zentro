@@ -254,6 +254,9 @@ export default function SalesForm() {
 
   // Derive userRole from profile
   const userRole = profile?.role || null
+  
+  // Helper to check if user can record sales (staff, branch_manager, and admin can, but not superadmin)
+  const canRecordSales = !isSuperAdmin && (isAdmin || isStaff || userRole === 'branch_manager' || userRole === 'tenant_admin')
 
   // Helper function to normalize date format
   const normalizeDate = useCallback((dateStr: string): string => {
@@ -602,8 +605,19 @@ export default function SalesForm() {
         return
       }
 
+      // Verify user can record sales (staff, branch_manager, admin can)
+      if (!canRecordSales) {
+        setMessage({
+          type: 'error',
+          text: 'You do not have permission to record sales. Please contact your administrator.',
+        })
+        setLoading(false)
+        return
+      }
+
       const today = format(new Date(), 'yyyy-MM-dd')
-      if (!isAdmin && !isSuperAdmin && date !== today) {
+      // Staff and branch_manager can only record for today; admins can record for past dates
+      if (!isAdmin && date !== today) {
         setMessage({
           type: 'error',
           text: "Sales can only be recorded for today's date. Please use today's date.",
@@ -1038,11 +1052,11 @@ export default function SalesForm() {
             }}
             max={format(new Date(), 'yyyy-MM-dd')}
             required
-            disabled={!isAdmin && !isSuperAdmin}
+            disabled={!isAdmin}
             className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 ${
-              !isAdmin && !isSuperAdmin ? 'bg-gray-50 cursor-not-allowed' : ''
+              !isAdmin ? 'bg-gray-50 cursor-not-allowed' : ''
             }`}
-            readOnly={!isAdmin && !isSuperAdmin}
+            readOnly={!isAdmin}
           />
           <p className="mt-1 text-xs text-gray-500">
             {isAdmin || isSuperAdmin
