@@ -3,7 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 /**
  * Recalculates closing stock for a given date (only if not manually entered)
  */
-export async function recalculateClosingStock(date: string, user_id: string) {
+export async function recalculateClosingStock(
+  date: string,
+  user_id: string,
+  branchId?: string | null
+) {
   // Normalize date format to YYYY-MM-DD (handle any format variations)
   if (date.includes('T')) {
     date = date.split('T')[0]
@@ -39,14 +43,20 @@ export async function recalculateClosingStock(date: string, user_id: string) {
   })
 
   try {
-    // Get user's organization_id
+    // Get user's organization_id and branch_id
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('organization_id')
+      .select('organization_id, branch_id, role')
       .eq('id', user_id)
       .single()
 
     const organizationId = profile?.organization_id || null
+
+    // Determine effective branch_id
+    const effective_branch_id =
+      profile?.role === 'admin' && !profile.branch_id
+        ? branchId || null // Tenant admin: can specify
+        : profile?.branch_id || null // Branch manager/staff: fixed
 
     // Get all items for this organization
     let itemsQuery = supabaseAdmin.from('items').select('*').order('name')
@@ -80,10 +90,16 @@ export async function recalculateClosingStock(date: string, user_id: string) {
     const prevDay = String(dateObj.getDate()).padStart(2, '0')
     const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`
 
-    // Helper function to add organization filter
+    // Helper function to add organization and branch filter
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const addOrgFilter = (query: any) => {
-      return organizationId ? query.eq('organization_id', organizationId) : query
+    const addOrgBranchFilter = (query: any) => {
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId)
+      }
+      if (effective_branch_id) {
+        query = query.eq('branch_id', effective_branch_id)
+      }
+      return query
     }
 
     // Get previous day's closing stock
@@ -91,7 +107,7 @@ export async function recalculateClosingStock(date: string, user_id: string) {
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', prevDateStr)
-    prevClosingStockQuery = addOrgFilter(prevClosingStockQuery)
+    prevClosingStockQuery = addOrgBranchFilter(prevClosingStockQuery)
     const { data: prevClosingStock } = await prevClosingStockQuery
 
     // Get today's opening stock
@@ -99,12 +115,12 @@ export async function recalculateClosingStock(date: string, user_id: string) {
       .from('opening_stock')
       .select('item_id, quantity')
       .eq('date', date)
-    todayOpeningStockQuery = addOrgFilter(todayOpeningStockQuery)
+    todayOpeningStockQuery = addOrgBranchFilter(todayOpeningStockQuery)
     const { data: todayOpeningStock } = await todayOpeningStockQuery
 
     // Get today's sales
     let todaySalesQuery = supabaseAdmin.from('sales').select('item_id, quantity').eq('date', date)
-    todaySalesQuery = addOrgFilter(todaySalesQuery)
+    todaySalesQuery = addOrgBranchFilter(todaySalesQuery)
     const { data: todaySales } = await todaySalesQuery
 
     // Get today's restocking
@@ -112,7 +128,7 @@ export async function recalculateClosingStock(date: string, user_id: string) {
       .from('restocking')
       .select('item_id, quantity')
       .eq('date', date)
-    todayRestockingQuery = addOrgFilter(todayRestockingQuery)
+    todayRestockingQuery = addOrgBranchFilter(todayRestockingQuery)
     const { data: todayRestocking } = await todayRestockingQuery
 
     // Get today's waste/spoilage
@@ -120,7 +136,7 @@ export async function recalculateClosingStock(date: string, user_id: string) {
       .from('waste_spoilage')
       .select('item_id, quantity')
       .eq('date', date)
-    todayWasteSpoilageQuery = addOrgFilter(todayWasteSpoilageQuery)
+    todayWasteSpoilageQuery = addOrgBranchFilter(todayWasteSpoilageQuery)
     const { data: todayWasteSpoilage } = await todayWasteSpoilageQuery
 
     // Filter items by organization_id if specified
@@ -169,6 +185,7 @@ export async function recalculateClosingStock(date: string, user_id: string) {
         date,
         recorded_by: user_id,
         organization_id: organizationId,
+        branch_id: effective_branch_id,
         notes: `Auto-calculated: Opening (${openingStock}) + Restocking (${totalRestocking}) - Sales (${totalSales}) - Waste/Spoilage (${totalWasteSpoilage})`,
       }
     })
@@ -176,7 +193,7 @@ export async function recalculateClosingStock(date: string, user_id: string) {
     if (closingStockRecords.length > 0) {
       // Upsert closing stock records
       await supabaseAdmin.from('closing_stock').upsert(closingStockRecords, {
-        onConflict: 'item_id,date,organization_id',
+        onConflict: 'item_id,date,organization_id,branch_id',
       })
     }
   } catch (error) {
@@ -189,7 +206,11 @@ export async function recalculateClosingStock(date: string, user_id: string) {
  * When closing stock changes for a date, it updates opening stock for the next day
  * This continues until we reach today or a manually entered opening stock
  */
-export async function cascadeUpdateFromDate(start_date: string, user_id: string) {
+export async function cascadeUpdateFromDate(
+  start_date: string,
+  user_id: string,
+  branchId?: string | null
+) {
   // Normalize date format to YYYY-MM-DD (handle any format variations)
   if (start_date.includes('T')) {
     start_date = start_date.split('T')[0]
@@ -224,14 +245,20 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
     },
   })
 
-  // Get user's organization_id
+  // Get user's organization_id and branch_id
   const { data: profile } = await supabaseAdmin
     .from('profiles')
-    .select('organization_id')
+    .select('organization_id, branch_id, role')
     .eq('id', user_id)
     .single()
 
   const organizationId = profile?.organization_id || null
+
+  // Determine effective branch_id
+  const effective_branch_id =
+    profile?.role === 'admin' && !profile.branch_id
+      ? branchId || null // Tenant admin: can specify
+      : profile?.branch_id || null // Branch manager/staff: fixed
 
   // Parse start_date using local time to avoid timezone issues
   const startDateStr = start_date.split('T')[0] // Ensure YYYY-MM-DD format
@@ -264,10 +291,16 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
     nextDate.setDate(nextDate.getDate() + 1)
     const nextDateStr = formatDateLocal(nextDate)
 
-    // Helper function to add organization filter
+    // Helper function to add organization and branch filter
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const addOrgFilter = (query: any) => {
-      return organizationId ? query.eq('organization_id', organizationId) : query
+    const addOrgBranchFilter = (query: any) => {
+      if (organizationId) {
+        query = query.eq('organization_id', organizationId)
+      }
+      if (effective_branch_id) {
+        query = query.eq('branch_id', effective_branch_id)
+      }
+      return query
     }
 
     // Get closing stock for current date
@@ -275,7 +308,7 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', currentDateStr)
-    closingStockQuery = addOrgFilter(closingStockQuery)
+    closingStockQuery = addOrgBranchFilter(closingStockQuery)
     const { data: closingStock } = await closingStockQuery
 
     if (!closingStock || closingStock.length === 0) {
@@ -289,7 +322,7 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
       .from('opening_stock')
       .select('item_id, cost_price, selling_price')
       .eq('date', currentDateStr)
-    currentOpeningStockQuery = addOrgFilter(currentOpeningStockQuery)
+    currentOpeningStockQuery = addOrgBranchFilter(currentOpeningStockQuery)
     const { data: currentOpeningStock } = await currentOpeningStockQuery
 
     // Note: We'll fetch existing opening stock with prices below to preserve them
@@ -313,7 +346,7 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
       .from('opening_stock')
       .select('item_id, quantity, cost_price, selling_price')
       .eq('date', nextDateStr)
-    existingNextOpeningStockWithPricesQuery = addOrgFilter(existingNextOpeningStockWithPricesQuery)
+    existingNextOpeningStockWithPricesQuery = addOrgBranchFilter(existingNextOpeningStockWithPricesQuery)
     const { data: existingNextOpeningStockWithPrices } =
       await existingNextOpeningStockWithPricesQuery
 
@@ -370,6 +403,7 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
           date: nextDateStr,
           recorded_by: user_id,
           organization_id: organizationId,
+          branch_id: effective_branch_id,
           notes,
         }
       })
@@ -379,7 +413,7 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
       const { error: upsertError } = await supabaseAdmin
         .from('opening_stock')
         .upsert(openingStockToUpsert, {
-          onConflict: 'item_id,date,organization_id',
+          onConflict: 'item_id,date,organization_id,branch_id',
         })
 
       if (!upsertError) {
@@ -388,7 +422,7 @@ export async function cascadeUpdateFromDate(start_date: string, user_id: string)
         )
 
         // Recalculate closing stock for next date to maintain chain
-        await recalculateClosingStock(nextDateStr, user_id)
+        await recalculateClosingStock(nextDateStr, user_id, effective_branch_id)
       }
     }
 

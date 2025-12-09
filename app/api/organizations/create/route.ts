@@ -50,7 +50,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: profileError.message }, { status: 500 })
     }
 
-    return NextResponse.json({ success: true, organization })
+    // Auto-create "Main Branch" for the new organization
+    const { data: mainBranch, error: branchError } = await supabaseAdmin
+      .from('branches')
+      .insert({
+        organization_id: organization.id,
+        name: organization.name + ' - Main Branch',
+        is_active: true,
+      })
+      .select()
+      .single()
+
+    if (branchError) {
+      console.error('Error creating main branch:', branchError)
+      // Don't fail the organization creation if branch creation fails
+      // The branch can be created manually later
+    }
+
+    return NextResponse.json({ success: true, organization, branch: mainBranch || null })
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to create organization'
     return NextResponse.json({ error: errorMessage }, { status: 500 })

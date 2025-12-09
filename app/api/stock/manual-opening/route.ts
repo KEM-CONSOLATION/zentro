@@ -23,11 +23,12 @@ export async function POST(request: NextRequest) {
     // Get user's organization_id
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('organization_id')
+      .select('organization_id, branch_id, role')
       .eq('id', user_id)
       .single()
 
     const organizationId = profile?.organization_id || null
+    const branchId = profile?.role === 'admin' && !profile?.branch_id ? null : profile?.branch_id || null
 
     // Reject future dates
     const today = new Date().toISOString().split('T')[0]
@@ -53,6 +54,7 @@ export async function POST(request: NextRequest) {
         date,
         recorded_by: user_id,
         organization_id: organizationId,
+        branch_id: branchId,
         notes: 'Manually entered opening stock',
       })
     )
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
     const { error: upsertError } = await supabaseAdmin
       .from('opening_stock')
       .upsert(openingStockRecords, {
-        onConflict: 'item_id,date,organization_id',
+        onConflict: 'item_id,date,organization_id,branch_id',
       })
 
     if (upsertError) {

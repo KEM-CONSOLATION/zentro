@@ -26,20 +26,23 @@ export async function PUT(request: NextRequest) {
       description,
       old_quantity,
       user_id,
+      branch_id,
     } = body
 
     if (!sale_id || !item_id || !quantity || !date || old_quantity === undefined || !user_id) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Get user's organization_id
+    // Get user's organization/branch
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('organization_id')
+      .select('organization_id, branch_id, role')
       .eq('id', user_id)
       .single()
 
     const organizationId = profile?.organization_id || null
+    const effectiveBranchId =
+      profile?.role === 'admin' && !profile?.branch_id ? branch_id || null : profile?.branch_id || null
 
     // Reject future dates
     const today = new Date().toISOString().split('T')[0]
@@ -51,9 +54,11 @@ export async function PUT(request: NextRequest) {
     const isPastDate = date < today
 
     // Helper function to add organization filter
-    const addOrgFilter = (query: any) => {
-      return organizationId ? query.eq('organization_id', organizationId) : query
-    }
+    const addOrgFilter = (query: any) => (organizationId ? query.eq('organization_id', organizationId) : query)
+    const addBranchFilter = (query: any) =>
+      effectiveBranchId !== null && effectiveBranchId !== undefined
+        ? query.eq('branch_id', effectiveBranchId)
+        : query
 
     let availableStock = 0
     let stockInfo = ''
@@ -65,7 +70,7 @@ export async function PUT(request: NextRequest) {
         .select('quantity')
         .eq('item_id', item_id)
         .eq('date', date)
-      openingStockQuery = addOrgFilter(openingStockQuery)
+      openingStockQuery = addBranchFilter(addOrgFilter(openingStockQuery))
       const { data: openingStock } = await openingStockQuery.single()
 
       let restockingQuery = supabaseAdmin
@@ -73,7 +78,7 @@ export async function PUT(request: NextRequest) {
         .select('quantity')
         .eq('item_id', item_id)
         .eq('date', date)
-      restockingQuery = addOrgFilter(restockingQuery)
+      restockingQuery = addBranchFilter(addOrgFilter(restockingQuery))
       const { data: restocking } = await restockingQuery
 
       let existingSalesQuery = supabaseAdmin
@@ -82,7 +87,7 @@ export async function PUT(request: NextRequest) {
         .eq('item_id', item_id)
         .eq('date', date)
         .neq('id', sale_id)
-      existingSalesQuery = addOrgFilter(existingSalesQuery)
+      existingSalesQuery = addBranchFilter(addOrgFilter(existingSalesQuery))
       const { data: existingSales } = await existingSalesQuery
 
       const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
@@ -101,7 +106,7 @@ export async function PUT(request: NextRequest) {
         .select('quantity')
         .eq('item_id', item_id)
         .eq('date', date)
-      openingStockQuery = addOrgFilter(openingStockQuery)
+      openingStockQuery = addBranchFilter(addOrgFilter(openingStockQuery))
       const { data: openingStock } = await openingStockQuery.single()
 
       let restockingQuery = supabaseAdmin
@@ -109,7 +114,7 @@ export async function PUT(request: NextRequest) {
         .select('quantity')
         .eq('item_id', item_id)
         .eq('date', date)
-      restockingQuery = addOrgFilter(restockingQuery)
+      restockingQuery = addBranchFilter(addOrgFilter(restockingQuery))
       const { data: restocking } = await restockingQuery
 
       let existingSalesQuery = supabaseAdmin
@@ -118,7 +123,7 @@ export async function PUT(request: NextRequest) {
         .eq('item_id', item_id)
         .eq('date', date)
         .neq('id', sale_id)
-      existingSalesQuery = addOrgFilter(existingSalesQuery)
+      existingSalesQuery = addBranchFilter(addOrgFilter(existingSalesQuery))
       const { data: existingSales } = await existingSalesQuery
 
       const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
@@ -156,6 +161,8 @@ export async function PUT(request: NextRequest) {
         payment_mode: payment_mode || 'cash',
         date,
         description: description || null,
+        organization_id: organizationId,
+        branch_id: effectiveBranchId,
       })
       .eq('id', sale_id)
 
@@ -167,10 +174,10 @@ export async function PUT(request: NextRequest) {
     if (isPastDate) {
       try {
         // Recalculate closing stock for this date
-        await recalculateClosingStock(date, user_id)
+        await recalculateClosingStock(date, user_id, effectiveBranchId)
 
         // Cascade update opening stock for subsequent days
-        await cascadeUpdateFromDate(date, user_id)
+        await cascadeUpdateFromDate(date, user_id, effectiveBranchId)
       } catch (error) {
         console.error('Failed to cascade update after sale update:', error)
         // Don't fail the update if cascade update fails

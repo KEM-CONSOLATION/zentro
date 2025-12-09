@@ -215,7 +215,7 @@ function StockAvailabilityDisplay({
 }
 
 export default function SalesForm() {
-  const { user, profile, organizationId, isAdmin, isSuperAdmin, isStaff } = useAuth()
+  const { user, profile, organizationId, branchId, isAdmin, isSuperAdmin, isStaff } = useAuth()
 
   // Use Zustand stores
   const { items, fetchItems: fetchItemsFromStore } = useItemsStore()
@@ -279,8 +279,8 @@ export default function SalesForm() {
       return
     }
 
-    await fetchSalesFromStore(dateStr, organizationId)
-  }, [date, normalizeDate, organizationId, fetchSalesFromStore])
+    await fetchSalesFromStore(dateStr, organizationId, branchId)
+  }, [date, normalizeDate, organizationId, branchId, fetchSalesFromStore])
 
   const fetchOpeningStockCallback = useCallback(async () => {
     try {
@@ -303,7 +303,7 @@ export default function SalesForm() {
         return
       }
 
-      await fetchOpeningStockFromStore(dateStr, organizationId)
+      await fetchOpeningStockFromStore(dateStr, organizationId, branchId)
 
       // Check for errors after fetch
       if (isPastDate && openingStocks.length === 0) {
@@ -321,7 +321,7 @@ export default function SalesForm() {
         text: `Failed to fetch opening stock: ${errorMessage}. Please try again.`,
       })
     }
-  }, [date, isPastDate, message, organizationId, fetchOpeningStockFromStore, openingStocks.length])
+  }, [date, isPastDate, message, organizationId, branchId, fetchOpeningStockFromStore, openingStocks.length])
 
   const fetchRestockingCallback = useCallback(async () => {
     try {
@@ -339,16 +339,16 @@ export default function SalesForm() {
         return
       }
 
-      await fetchRestockingFromStore(dateStr, organizationId)
+      await fetchRestockingFromStore(dateStr, organizationId, branchId)
     } catch (error) {
       console.error('Error fetching restocking:', error)
     }
-  }, [date, organizationId, fetchRestockingFromStore])
+  }, [date, organizationId, branchId, fetchRestockingFromStore])
 
   useEffect(() => {
     // Fetch all data from stores
     if (organizationId) {
-      fetchItemsFromStore(organizationId)
+      fetchItemsFromStore(organizationId, branchId)
     }
     fetchSalesCallback()
     fetchOpeningStockCallback()
@@ -396,7 +396,7 @@ export default function SalesForm() {
               setTimeout(() => {
                 fetchOpeningStockCallback()
                 if (organizationId) {
-                  fetchItemsFromStore(organizationId)
+                  fetchItemsFromStore(organizationId, branchId)
                 }
               }, 500)
             }
@@ -419,6 +419,7 @@ export default function SalesForm() {
     user,
     organizationId,
     fetchItemsFromStore,
+    branchId,
   ])
 
   // Refresh items when window gains focus (user might have added items in another tab)
@@ -780,6 +781,7 @@ export default function SalesForm() {
             description: description || null,
             old_quantity: editingSale.quantity,
             user_id: user.id,
+            branch_id: branchId,
           }),
         })
 
@@ -798,7 +800,7 @@ export default function SalesForm() {
         // Refresh data from stores
         await fetchSalesCallback()
         if (organizationId) {
-          fetchItemsFromStore(organizationId)
+          fetchItemsFromStore(organizationId, branchId)
         }
         fetchOpeningStockCallback()
         fetchRestockingCallback()
@@ -820,6 +822,7 @@ export default function SalesForm() {
             date: normalizedDateForAPI,
             description: description || null,
             user_id: user.id,
+            branch_id: branchId,
             restocking_id:
               selectedBatch && selectedBatch.type === 'restocking' ? selectedBatch.id : null,
             opening_stock_id:
@@ -843,7 +846,7 @@ export default function SalesForm() {
         // Refresh data from stores
         await fetchSalesCallback()
         if (organizationId) {
-          fetchItemsFromStore(organizationId)
+          fetchItemsFromStore(organizationId, branchId)
         }
         fetchOpeningStockCallback()
         fetchRestockingCallback()

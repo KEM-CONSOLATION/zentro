@@ -4,8 +4,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Item, Restocking, Profile } from '@/types/database'
 import { format } from 'date-fns'
+import { useAuth } from '@/lib/hooks/useAuth'
 
 export default function RestockingForm() {
+  const { organizationId, branchId } = useAuth()
   const [items, setItems] = useState<Item[]>([])
   const [restockings, setRestockings] = useState<
     (Restocking & { item?: Item; recorded_by_profile?: Profile })[]
@@ -25,20 +27,6 @@ export default function RestockingForm() {
   const [filterDate, setFilterDate] = useState<string>('') // Date filter for records table
 
   const fetchRestockings = useCallback(async () => {
-    // Get user's organization_id for filtering
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    let organizationId: string | null = null
-    if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single()
-      organizationId = profile?.organization_id || null
-    }
-
     let restockingQuery = supabase.from('restocking').select(`
         *,
         item:items(*),
@@ -48,6 +36,11 @@ export default function RestockingForm() {
     // Filter by organization_id
     if (organizationId) {
       restockingQuery = restockingQuery.eq('organization_id', organizationId)
+    }
+
+    // Filter by branch_id if provided
+    if (branchId) {
+      restockingQuery = restockingQuery.eq('branch_id', branchId)
     }
 
     // Filter by date if filterDate is set
@@ -74,7 +67,7 @@ export default function RestockingForm() {
     if (!error && data) {
       setRestockings(data)
     }
-  }, [filterDate])
+  }, [filterDate, organizationId, branchId])
 
   useEffect(() => {
     fetchItems()
@@ -123,7 +116,12 @@ export default function RestockingForm() {
   }
 
   const fetchItems = async () => {
-    const { data } = await supabase.from('items').select('*').order('name')
+    let itemsQuery = supabase.from('items').select('*').order('name')
+    if (organizationId) {
+      itemsQuery = itemsQuery.eq('organization_id', organizationId)
+    }
+    // Note: Items are organization-level, not branch-level, so we don't filter by branch_id
+    const { data } = await itemsQuery
     if (data) {
       setItems(data)
     }
@@ -132,31 +130,51 @@ export default function RestockingForm() {
   const fetchOpeningStockAndTotal = async () => {
     try {
       // Get opening stock for the selected date
-      const { data: openingData } = await supabase
+      let openingQuery = supabase
         .from('opening_stock')
         .select('quantity')
         .eq('item_id', selectedItem)
         .eq('date', date)
-        .single()
+      if (organizationId) {
+        openingQuery = openingQuery.eq('organization_id', organizationId)
+      }
+      if (branchId) {
+        openingQuery = openingQuery.eq('branch_id', branchId)
+      }
+      const { data: openingData } = await openingQuery.single()
 
       const openingQty = openingData?.quantity || 0
 
       // Get total restocking for the date
-      const { data: restockingData } = await supabase
+      let restockingQuery = supabase
         .from('restocking')
         .select('quantity')
         .eq('item_id', selectedItem)
         .eq('date', date)
+      if (organizationId) {
+        restockingQuery = restockingQuery.eq('organization_id', organizationId)
+      }
+      if (branchId) {
+        restockingQuery = restockingQuery.eq('branch_id', branchId)
+      }
+      const { data: restockingData } = await restockingQuery
 
       const totalRestocking =
         restockingData?.reduce((sum, r) => sum + parseFloat(r.quantity.toString()), 0) || 0
 
       // Get total sales for the date
-      const { data: salesData } = await supabase
+      let salesQuery = supabase
         .from('sales')
         .select('quantity')
         .eq('item_id', selectedItem)
         .eq('date', date)
+      if (organizationId) {
+        salesQuery = salesQuery.eq('organization_id', organizationId)
+      }
+      if (branchId) {
+        salesQuery = salesQuery.eq('branch_id', branchId)
+      }
+      const { data: salesData } = await salesQuery
 
       const totalSales =
         salesData?.reduce((sum, s) => sum + parseFloat(s.quantity.toString()), 0) || 0
@@ -304,6 +322,9 @@ export default function RestockingForm() {
               profile.organization_id
             )
           }
+          if (branchId) {
+            prevOpeningStockQuery = prevOpeningStockQuery.eq('branch_id', branchId)
+          }
           const { data: prevOpeningStock } = await prevOpeningStockQuery
 
           // Get item to use as fallback if no previous opening stock
@@ -332,6 +353,7 @@ export default function RestockingForm() {
             recorded_by: currentUser.id,
             notes: 'Auto-created from restocking',
             organization_id: profile?.organization_id || null,
+            branch_id: branchId || null,
           }
 
           // Use previous day's prices if available, otherwise item's prices
@@ -347,7 +369,7 @@ export default function RestockingForm() {
           const { error: createOpeningStockError } = await supabase
             .from('opening_stock')
             .upsert(openingStockData, {
-              onConflict: 'item_id,date,organization_id',
+              onConflict: 'item_id,date,organization_id,branch_id',
             })
 
           if (createOpeningStockError) {
@@ -407,6 +429,7 @@ export default function RestockingForm() {
           date,
           recorded_by: user.id,
           organization_id: profile?.organization_id || null,
+          branch_id: branchId || null,
           notes: notes || null,
           ...restockingPriceData,
         })

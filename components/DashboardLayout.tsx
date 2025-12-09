@@ -11,6 +11,7 @@ import OrganizationLogo, {
   getDefaultBrandColor,
 } from './OrganizationLogo'
 import NotificationCenter from './NotificationCenter'
+import BranchSelector from './BranchSelector'
 
 interface DashboardLayoutProps {
   children: React.ReactNode
@@ -402,9 +403,12 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
             <div className="flex-1" />
             <div className="flex items-center gap-3">
               {user.role !== 'superadmin' && (
-                <div className="relative">
-                  <NotificationCenter />
-                </div>
+                <>
+                  <BranchSelector />
+                  <div className="relative">
+                    <NotificationCenter />
+                  </div>
+                </>
               )}
               <div className="hidden lg:block">
                 <h2 className="text-lg font-semibold text-gray-900">

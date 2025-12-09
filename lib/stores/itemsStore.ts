@@ -7,7 +7,7 @@ interface ItemsState {
   loading: boolean
   error: string | null
   lastFetched: number | null
-  fetchItems: (organizationId: string | null) => Promise<void>
+  fetchItems: (organizationId: string | null, branchId?: string | null) => Promise<void>
   addItem: (item: Item) => void
   updateItem: (itemId: string, updates: Partial<Item>) => void
   removeItem: (itemId: string) => void
@@ -22,7 +22,7 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
   error: null,
   lastFetched: null,
 
-  fetchItems: async (organizationId: string | null) => {
+  fetchItems: async (organizationId: string | null, branchId?: string | null) => {
     const state = get()
     const now = Date.now()
 
@@ -43,6 +43,12 @@ export const useItemsStore = create<ItemsState>((set, get) => ({
 
       if (organizationId) {
         itemsQuery = itemsQuery.eq('organization_id', organizationId)
+      }
+
+      // Filter by branch_id if provided (for branch-specific inventory)
+      // If branchId is null/undefined, show all items (tenant admin viewing all branches)
+      if (branchId !== undefined && branchId !== null) {
+        itemsQuery = itemsQuery.eq('branch_id', branchId)
       }
 
       const { data, error } = await itemsQuery

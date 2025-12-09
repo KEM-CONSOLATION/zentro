@@ -8,7 +8,7 @@ interface SalesState {
   error: string | null
   lastFetched: number | null
   lastFetchedDate: string | null
-  fetchSales: (date: string, organizationId: string | null) => Promise<void>
+  fetchSales: (date: string, organizationId: string | null, branchId?: string | null) => Promise<void>
   addSale: (sale: Sale & { item?: Item; recorded_by_profile?: Profile }) => void
   updateSale: (saleId: string, updates: Partial<Sale>) => void
   removeSale: (saleId: string) => void
@@ -24,7 +24,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
   lastFetched: null,
   lastFetchedDate: null,
 
-  fetchSales: async (date: string, organizationId: string | null) => {
+  fetchSales: async (date: string, organizationId: string | null, branchId?: string | null) => {
     const state = get()
     const now = Date.now()
 
@@ -58,6 +58,11 @@ export const useSalesStore = create<SalesState>((set, get) => ({
 
       if (organizationId) {
         salesQuery = salesQuery.eq('organization_id', organizationId)
+      }
+
+      // Filter by branch_id if provided
+      if (branchId !== undefined && branchId !== null) {
+        salesQuery = salesQuery.eq('branch_id', branchId)
       }
 
       const { data, error } = await salesQuery

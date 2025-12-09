@@ -22,9 +22,9 @@ interface StockState {
     closing: string | null
     restocking: string | null
   }
-  fetchOpeningStock: (date: string, organizationId: string | null) => Promise<void>
-  fetchClosingStock: (date: string, organizationId: string | null) => Promise<void>
-  fetchRestocking: (date: string, organizationId: string | null) => Promise<void>
+  fetchOpeningStock: (date: string, organizationId: string | null, branchId?: string | null) => Promise<void>
+  fetchClosingStock: (date: string, organizationId: string | null, branchId?: string | null) => Promise<void>
+  fetchRestocking: (date: string, organizationId: string | null, branchId?: string | null) => Promise<void>
   addOpeningStock: (stock: OpeningStock & { item?: Item }) => void
   updateOpeningStock: (stockId: string, updates: Partial<OpeningStock>) => void
   addClosingStock: (stock: ClosingStock & { item?: Item }) => void
@@ -58,7 +58,7 @@ export const useStockStore = create<StockState>((set, get) => ({
     restocking: null,
   },
 
-  fetchOpeningStock: async (date: string, organizationId: string | null) => {
+  fetchOpeningStock: async (date: string, organizationId: string | null, branchId?: string | null) => {
     const state = get()
     const now = Date.now()
 
@@ -93,6 +93,11 @@ export const useStockStore = create<StockState>((set, get) => ({
         query = query.eq('organization_id', organizationId)
       }
 
+      // Filter by branch_id if provided
+      if (branchId !== undefined && branchId !== null) {
+        query = query.eq('branch_id', branchId)
+      }
+
       const { data, error } = await query
 
       if (error) throw error
@@ -114,7 +119,7 @@ export const useStockStore = create<StockState>((set, get) => ({
     }
   },
 
-  fetchClosingStock: async (date: string, organizationId: string | null) => {
+  fetchClosingStock: async (date: string, organizationId: string | null, branchId?: string | null) => {
     const state = get()
     const now = Date.now()
 
@@ -148,6 +153,11 @@ export const useStockStore = create<StockState>((set, get) => ({
         query = query.eq('organization_id', organizationId)
       }
 
+      // Filter by branch_id if provided
+      if (branchId !== undefined && branchId !== null) {
+        query = query.eq('branch_id', branchId)
+      }
+
       const { data, error } = await query
 
       if (error) throw error
@@ -169,7 +179,7 @@ export const useStockStore = create<StockState>((set, get) => ({
     }
   },
 
-  fetchRestocking: async (date: string, organizationId: string | null) => {
+  fetchRestocking: async (date: string, organizationId: string | null, branchId?: string | null) => {
     const state = get()
     const now = Date.now()
 
@@ -201,6 +211,11 @@ export const useStockStore = create<StockState>((set, get) => ({
 
       if (organizationId) {
         query = query.eq('organization_id', organizationId)
+      }
+
+      // Filter by branch_id if provided
+      if (branchId !== undefined && branchId !== null) {
+        query = query.eq('branch_id', branchId)
       }
 
       const { data, error } = await query

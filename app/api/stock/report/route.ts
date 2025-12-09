@@ -43,23 +43,30 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get user's organization_id from authenticated session
+    // Get user's organization_id/branch_id from authenticated session
     let organizationId: string | null = null
+    let branchId: string | null = null
     if (user) {
       const { data: profile } = await supabaseAdmin
         .from('profiles')
-        .select('organization_id')
+        .select('organization_id, branch_id, role')
         .eq('id', user.id)
         .single()
       organizationId = profile?.organization_id || null
+      branchId =
+        profile?.role === 'admin' && !profile?.branch_id
+          ? null // tenant admin can view all branches
+          : profile?.branch_id || null
     }
 
-    // Get items - filter by organization_id if available
+    // Helper functions to add filters
+    const addOrgFilter = (query: any) => (organizationId ? query.eq('organization_id', organizationId) : query)
+    const addBranchFilter = (query: any) =>
+      branchId !== null && branchId !== undefined ? query.eq('branch_id', branchId) : query
+
+    // Get items - filter by organization_id/branch_id if available
     let itemsQuery = supabaseAdmin.from('items').select('*').order('name')
-
-    if (organizationId) {
-      itemsQuery = itemsQuery.eq('organization_id', organizationId)
-    }
+    itemsQuery = addBranchFilter(addOrgFilter(itemsQuery))
 
     const { data: items, error: itemsError } = await itemsQuery
 
@@ -92,17 +99,12 @@ export async function GET(request: NextRequest) {
     const prevDay = String(dateObj.getDate()).padStart(2, '0')
     const prevDateStr = `${prevYear}-${prevMonth}-${prevDay}`
 
-    // Helper function to add organization filter
-    const addOrgFilter = (query: any) => {
-      return organizationId ? query.eq('organization_id', organizationId) : query
-    }
-
     // Get existing opening stock for this date (if manually entered)
     let openingStockQuery = supabaseAdmin
       .from('opening_stock')
       .select('item_id, quantity, cost_price, selling_price')
       .eq('date', date)
-    openingStockQuery = addOrgFilter(openingStockQuery)
+    openingStockQuery = addBranchFilter(addOrgFilter(openingStockQuery))
     const { data: existingOpeningStock } = await openingStockQuery
 
     // Get existing closing stock for this date (if manually entered)
@@ -110,7 +112,7 @@ export async function GET(request: NextRequest) {
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', date)
-    closingStockQuery = addOrgFilter(closingStockQuery)
+    closingStockQuery = addBranchFilter(addOrgFilter(closingStockQuery))
     const { data: existingClosingStock } = await closingStockQuery
 
     // Get previous day's closing stock
@@ -118,7 +120,7 @@ export async function GET(request: NextRequest) {
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', prevDateStr)
-    prevClosingStockQuery = addOrgFilter(prevClosingStockQuery)
+    prevClosingStockQuery = addBranchFilter(addOrgFilter(prevClosingStockQuery))
     const { data: prevClosingStock, error: closingStockError } = await prevClosingStockQuery
 
     if (closingStockError) {
@@ -127,7 +129,7 @@ export async function GET(request: NextRequest) {
 
     // Get sales for this date
     let salesQuery = supabaseAdmin.from('sales').select('item_id, quantity').eq('date', date)
-    salesQuery = addOrgFilter(salesQuery)
+    salesQuery = addBranchFilter(addOrgFilter(salesQuery))
     const { data: dateSales } = await salesQuery
 
     // Get restocking for this date
@@ -135,7 +137,7 @@ export async function GET(request: NextRequest) {
       .from('restocking')
       .select('item_id, quantity')
       .eq('date', date)
-    restockingQuery = addOrgFilter(restockingQuery)
+    restockingQuery = addBranchFilter(addOrgFilter(restockingQuery))
     const { data: dateRestocking } = await restockingQuery
 
     // Get waste/spoilage for this date
@@ -143,13 +145,11 @@ export async function GET(request: NextRequest) {
       .from('waste_spoilage')
       .select('item_id, quantity')
       .eq('date', date)
-    wasteSpoilageQuery = addOrgFilter(wasteSpoilageQuery)
+    wasteSpoilageQuery = addBranchFilter(addOrgFilter(wasteSpoilageQuery))
     const { data: dateWasteSpoilage } = await wasteSpoilageQuery
 
     // Filter items by organization_id if specified
-    const filteredItems = organizationId
-      ? items.filter(item => item.organization_id === organizationId)
-      : items
+    const filteredItems = items
 
     // Calculate opening and closing stock for each item
     const report = filteredItems.map(item => {

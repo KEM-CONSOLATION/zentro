@@ -11,15 +11,30 @@ export interface Organization {
   brand_color?: string | null
 }
 
+export interface Branch {
+  id: string
+  organization_id: string
+  name: string
+  address: string | null
+  phone: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string
+  organization?: Organization
+}
+
 export interface Profile {
   id: string
   email: string
   full_name: string | null
   role: UserRole
   organization_id: string | null
+  branch_id: string | null
+  default_branch_id: string | null
   created_at: string
   updated_at: string
   organization?: Organization
+  branch?: Branch
 }
 
 export interface Item {
@@ -31,8 +46,11 @@ export interface Item {
   cost_price: number
   selling_price: number
   description: string | null
+  organization_id: string | null
+  branch_id: string | null
   created_at: string
   updated_at: string
+  branch?: Branch
 }
 
 export interface OpeningStock {
@@ -44,9 +62,12 @@ export interface OpeningStock {
   notes: string | null
   cost_price: number | null
   selling_price: number | null
+  organization_id: string | null
+  branch_id: string | null
   created_at: string
   item?: Item
   recorded_by_profile?: Profile
+  branch?: Branch
 }
 
 export interface ClosingStock {
@@ -56,9 +77,12 @@ export interface ClosingStock {
   date: string
   recorded_by: string
   notes: string | null
+  organization_id: string | null
+  branch_id: string | null
   created_at: string
   item?: Item
   recorded_by_profile?: Profile
+  branch?: Branch
 }
 
 export interface Sale {
@@ -74,11 +98,14 @@ export interface Sale {
   restocking_id: string | null
   opening_stock_id: string | null
   batch_label: string | null
+  organization_id: string | null
+  branch_id: string | null
   created_at: string
   item?: Item
   recorded_by_profile?: Profile
   restocking?: Restocking
   opening_stock?: OpeningStock
+  branch?: Branch
 }
 
 export interface Expense {
@@ -89,8 +116,11 @@ export interface Expense {
   recorded_by: string
   category: string | null
   notes: string | null
+  organization_id: string | null
+  branch_id: string | null
   created_at: string
   recorded_by_profile?: Profile
+  branch?: Branch
 }
 
 export interface MenuCategory {
@@ -126,9 +156,12 @@ export interface Restocking {
   notes: string | null
   cost_price: number | null
   selling_price: number | null
+  organization_id: string | null
+  branch_id: string | null
   created_at: string
   item?: Item
   recorded_by_profile?: Profile
+  branch?: Branch
 }
 
 export interface Recipe {
@@ -165,7 +198,10 @@ export interface WasteSpoilage {
   reason: string | null
   recorded_by: string
   notes: string | null
+  organization_id: string | null
+  branch_id: string | null
   created_at: string
   item?: Item
   recorded_by_profile?: Profile
+  branch?: Branch
 }

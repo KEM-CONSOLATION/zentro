@@ -9,6 +9,7 @@ import UserManagement from './UserManagement'
 import MenuManagement from './MenuManagement'
 import RecipeManagement from './RecipeManagement'
 import SuperAdminView from './SuperAdminView'
+import BranchManagement from './BranchManagement'
 
 function ResetQuantitiesSection() {
   const [resetting, setResetting] = useState(false)
@@ -215,7 +216,7 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false)
   const [userRole, setUserRole] = useState<'admin' | 'superadmin' | null>(null)
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'items' | 'users' | 'menu' | 'recipes' | 'superadmin'
+    'overview' | 'items' | 'users' | 'branches' | 'menu' | 'recipes' | 'superadmin'
   >('overview')
 
   useEffect(() => {
@@ -333,6 +334,16 @@ export default function AdminDashboard() {
               } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer transition-colors`}
             >
               Manage Users
+            </button>
+            <button
+              onClick={() => setActiveTab('branches')}
+              className={`${
+                activeTab === 'branches'
+                  ? 'border-indigo-600 text-indigo-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer transition-colors`}
+            >
+              Branches
             </button>
             <button
               onClick={() => setActiveTab('menu')}
@@ -610,6 +621,7 @@ export default function AdminDashboard() {
 
       {activeTab === 'items' && <ItemManagement />}
       {activeTab === 'users' && <UserManagement />}
+      {activeTab === 'branches' && <BranchManagement />}
       {activeTab === 'menu' && <MenuManagement />}
       {activeTab === 'recipes' && <RecipeManagement />}
     </div>

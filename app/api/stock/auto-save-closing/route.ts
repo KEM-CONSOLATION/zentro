@@ -32,14 +32,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Get user's organization_id
+    // Get user's organization/branch
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('organization_id')
+      .select('organization_id, branch_id, role')
       .eq('id', user_id)
       .single()
 
     const organizationId = profile?.organization_id || null
+    const branchId = profile?.role === 'admin' && !profile?.branch_id ? null : profile?.branch_id || null
 
     // Reject future dates
     const today = new Date().toISOString().split('T')[0]
@@ -69,17 +70,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch items' }, { status: 500 })
     }
 
-    // Helper function to add organization filter
-    const addOrgFilter = (query: any) => {
-      return organizationId ? query.eq('organization_id', organizationId) : query
-    }
+    // Helper functions to add filters
+    const addOrgFilter = (query: any) => (organizationId ? query.eq('organization_id', organizationId) : query)
+    const addBranchFilter = (query: any) =>
+      branchId !== null && branchId !== undefined ? query.eq('branch_id', branchId) : query
 
     // Get previous day's closing stock (or use item quantity as fallback)
     let prevClosingStockQuery = supabaseAdmin
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', prevDateStr)
-    prevClosingStockQuery = addOrgFilter(prevClosingStockQuery)
+    prevClosingStockQuery = addBranchFilter(addOrgFilter(prevClosingStockQuery))
     const { data: prevClosingStock } = await prevClosingStockQuery
 
     // Get today's opening stock
@@ -87,12 +88,12 @@ export async function POST(request: NextRequest) {
       .from('opening_stock')
       .select('item_id, quantity')
       .eq('date', date)
-    todayOpeningStockQuery = addOrgFilter(todayOpeningStockQuery)
+    todayOpeningStockQuery = addBranchFilter(addOrgFilter(todayOpeningStockQuery))
     const { data: todayOpeningStock } = await todayOpeningStockQuery
 
     // Get today's sales
     let todaySalesQuery = supabaseAdmin.from('sales').select('item_id, quantity').eq('date', date)
-    todaySalesQuery = addOrgFilter(todaySalesQuery)
+    todaySalesQuery = addBranchFilter(addOrgFilter(todaySalesQuery))
     const { data: todaySales } = await todaySalesQuery
 
     // Get today's restocking
@@ -100,7 +101,7 @@ export async function POST(request: NextRequest) {
       .from('restocking')
       .select('item_id, quantity')
       .eq('date', date)
-    todayRestockingQuery = addOrgFilter(todayRestockingQuery)
+    todayRestockingQuery = addBranchFilter(addOrgFilter(todayRestockingQuery))
     const { data: todayRestocking } = await todayRestockingQuery
 
     // Get today's waste/spoilage
@@ -108,13 +109,11 @@ export async function POST(request: NextRequest) {
       .from('waste_spoilage')
       .select('item_id, quantity')
       .eq('date', date)
-    todayWasteSpoilageQuery = addOrgFilter(todayWasteSpoilageQuery)
+    todayWasteSpoilageQuery = addBranchFilter(addOrgFilter(todayWasteSpoilageQuery))
     const { data: todayWasteSpoilage } = await todayWasteSpoilageQuery
 
     // Filter items by organization_id if specified
-    const filteredItems = organizationId
-      ? items.filter(item => item.organization_id === organizationId)
-      : items
+    const filteredItems = items
 
     // Calculate and save closing stock for each item
     const closingStockRecords = filteredItems.map(item => {
@@ -158,6 +157,7 @@ export async function POST(request: NextRequest) {
         date,
         recorded_by: user_id,
         organization_id: organizationId,
+        branch_id: branchId,
         notes: `Auto-calculated: Opening (${openingStock}) + Restocking (${totalRestocking}) - Sales (${totalSales}) - Waste/Spoilage (${totalWasteSpoilage})`,
       }
     })
@@ -166,16 +166,26 @@ export async function POST(request: NextRequest) {
     const { error: upsertError } = await supabaseAdmin
       .from('closing_stock')
       .upsert(closingStockRecords, {
-        onConflict: 'item_id,date,organization_id',
+        onConflict: 'item_id,date,organization_id,branch_id',
       })
 
     if (upsertError) {
       return NextResponse.json({ error: upsertError.message }, { status: 500 })
     }
 
+    // Get user's branch_id for cascade update
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('branch_id, role')
+      .eq('id', user_id)
+      .single()
+
+    const effective_branch_id =
+      profile?.role === 'admin' && !profile.branch_id ? null : profile?.branch_id || null
+
     // Trigger cascade update to sync opening stock for the next day
     try {
-      await cascadeUpdateFromDate(date, user_id)
+      await cascadeUpdateFromDate(date, user_id, effective_branch_id)
     } catch (error) {
       console.error('Cascade update failed after saving closing stock:', error)
       // Don't fail the request if cascade update fails

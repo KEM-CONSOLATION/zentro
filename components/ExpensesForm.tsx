@@ -11,8 +11,10 @@ import {
   formatCurrency,
   formatDate,
 } from '@/lib/export-utils'
+import { useAuth } from '@/lib/hooks/useAuth'
 
 export default function ExpensesForm() {
+  const { organizationId, branchId } = useAuth()
   const [expenses, setExpenses] = useState<(Expense & { recorded_by_profile?: Profile })[]>([])
   const [description, setDescription] = useState('')
   const [amount, setAmount] = useState('')
@@ -66,10 +68,17 @@ export default function ExpensesForm() {
 
   const fetchPreviousDaySales = async () => {
     const previousDate = format(subDays(new Date(startDate), 1), 'yyyy-MM-dd')
-    const { data: sales } = await supabase
+    let salesQuery = supabase
       .from('sales')
       .select('total_price')
       .eq('date', previousDate)
+    if (organizationId) {
+      salesQuery = salesQuery.eq('organization_id', organizationId)
+    }
+    if (branchId) {
+      salesQuery = salesQuery.eq('branch_id', branchId)
+    }
+    const { data: sales } = await salesQuery
 
     const total = sales?.reduce((sum, sale) => sum + (sale.total_price || 0), 0) || 0
     setPreviousDaySales(total)
@@ -89,20 +98,6 @@ export default function ExpensesForm() {
       return
     }
 
-    // Get user's organization_id
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    let organizationId: string | null = null
-    if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single()
-      organizationId = profile?.organization_id || null
-    }
-
     let expensesQuery = supabase
       .from('expenses')
       .select('*, recorded_by_profile:profiles(*)')
@@ -113,6 +108,9 @@ export default function ExpensesForm() {
 
     if (organizationId) {
       expensesQuery = expensesQuery.eq('organization_id', organizationId)
+    }
+    if (branchId) {
+      expensesQuery = expensesQuery.eq('branch_id', branchId)
     }
 
     const { data, error } = await expensesQuery
@@ -157,12 +155,21 @@ export default function ExpensesForm() {
         setMessage({ type: 'success', text: 'Expense updated successfully!' })
         setEditingExpense(null)
       } else {
+        // Get user's organization_id
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('id', user.id)
+          .single()
+
         const { error } = await supabase.from('expenses').insert({
           description,
           amount: parseFloat(amount),
           category: category || null,
           date,
           recorded_by: user.id,
+          organization_id: profile?.organization_id || null,
+          branch_id: branchId || null,
         })
 
         if (error) throw error

@@ -4,9 +4,12 @@ import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Item } from '@/types/database'
 import { format } from 'date-fns'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useItemsStore } from '@/lib/stores/itemsStore'
 
 export default function ItemManagement() {
-  const [items, setItems] = useState<Item[]>([])
+  const { organizationId, branchId } = useAuth()
+  const { items, fetchItems: fetchItemsFromStore } = useItemsStore()
   const [loading, setLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({
@@ -22,8 +25,10 @@ export default function ItemManagement() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   useEffect(() => {
-    fetchItems()
-  }, [])
+    if (organizationId) {
+      fetchItemsFromStore(organizationId, branchId)
+    }
+  }, [organizationId, branchId, fetchItemsFromStore])
 
   const capitalizeItemName = (name: string): string => {
     return name
@@ -33,16 +38,7 @@ export default function ItemManagement() {
       .join(' ')
   }
 
-  const fetchItems = async () => {
-    setLoading(true)
-    const { data, error } = await supabase.from('items').select('*').order('name')
-    if (error) {
-      setMessage({ type: 'error', text: 'Failed to fetch items' })
-    } else {
-      setItems(data || [])
-    }
-    setLoading(false)
-  }
+  // Items are now fetched from Zustand store, no need for local fetchItems
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -90,6 +86,7 @@ export default function ItemManagement() {
           selling_price: number
           description: string | null
           organization_id?: string | null
+          branch_id?: string | null
         } = {
           name: capitalizedName,
           unit: formData.unit,
@@ -102,6 +99,10 @@ export default function ItemManagement() {
 
         if (profile?.organization_id) {
           itemData.organization_id = profile.organization_id
+        }
+        // Items are organization-level, but we can track which branch they're primarily used in
+        if (branchId) {
+          itemData.branch_id = branchId
         }
 
         const { data: insertedItem, error } = await supabase
@@ -126,13 +127,14 @@ export default function ItemManagement() {
             date: today,
             recorded_by: user.id,
             organization_id: profile?.organization_id || null,
+            branch_id: branchId || null,
             notes: 'Auto-created opening stock when item was added',
           }
 
           const { error: openingStockError } = await supabase
             .from('opening_stock')
             .upsert(openingStockData, {
-              onConflict: 'item_id,date,organization_id',
+              onConflict: 'item_id,date,organization_id,branch_id',
             })
 
           if (openingStockError) {
@@ -166,7 +168,9 @@ export default function ItemManagement() {
       })
       setEditingItem(null)
       setShowForm(false)
-      fetchItems()
+      if (organizationId) {
+        fetchItemsFromStore(organizationId, branchId)
+      }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to save item'
       setMessage({ type: 'error', text: errorMessage })

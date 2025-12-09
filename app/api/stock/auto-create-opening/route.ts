@@ -20,14 +20,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing date or user_id' }, { status: 400 })
     }
 
-    // Get user's organization_id
+    // Get user's organization/branch
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('organization_id')
+      .select('organization_id, branch_id, role')
       .eq('id', user_id)
       .single()
 
     const organizationId = profile?.organization_id || null
+    const branchId = profile?.role === 'admin' && !profile?.branch_id ? null : profile?.branch_id || null
 
     // Reject future dates
     const today = new Date().toISOString().split('T')[0]
@@ -44,17 +45,14 @@ export async function POST(request: NextRequest) {
     prevDate.setDate(prevDate.getDate() - 1)
     const prevDateStr = prevDate.toISOString().split('T')[0]
 
-    // Helper function to add organization filter
-    const addOrgFilter = (query: any) => {
-      return organizationId ? query.eq('organization_id', organizationId) : query
-    }
+    // Helper functions to add filters
+    const addOrgFilter = (query: any) => (organizationId ? query.eq('organization_id', organizationId) : query)
+    const addBranchFilter = (query: any) =>
+      branchId !== null && branchId !== undefined ? query.eq('branch_id', branchId) : query
 
     // Get all items for this organization
     let itemsQuery = supabaseAdmin.from('items').select('*').order('name')
-
-    if (organizationId) {
-      itemsQuery = itemsQuery.eq('organization_id', organizationId)
-    }
+    itemsQuery = addBranchFilter(addOrgFilter(itemsQuery))
 
     const { data: items, error: itemsError } = await itemsQuery
 
@@ -67,7 +65,7 @@ export async function POST(request: NextRequest) {
       .from('closing_stock')
       .select('item_id, quantity')
       .eq('date', prevDateStr)
-    prevClosingStockQuery = addOrgFilter(prevClosingStockQuery)
+    prevClosingStockQuery = addBranchFilter(addOrgFilter(prevClosingStockQuery))
     const { data: prevClosingStock } = await prevClosingStockQuery
 
     // Get latest restocking prices for each item (to use for next day's opening stock)
@@ -78,7 +76,7 @@ export async function POST(request: NextRequest) {
       .lte('date', prevDateStr) // All restocking up to and including previous day
       .order('date', { ascending: false })
       .order('created_at', { ascending: false })
-    latestRestockingQuery = addOrgFilter(latestRestockingQuery)
+    latestRestockingQuery = addBranchFilter(addOrgFilter(latestRestockingQuery))
     const { data: allRestockings } = await latestRestockingQuery
 
     // Group by item_id and get the most recent restocking for each item
@@ -102,7 +100,7 @@ export async function POST(request: NextRequest) {
       .from('opening_stock')
       .select('item_id')
       .eq('date', date)
-    existingOpeningStockQuery = addOrgFilter(existingOpeningStockQuery)
+    existingOpeningStockQuery = addBranchFilter(addOrgFilter(existingOpeningStockQuery))
     const { data: existingOpeningStock } = await existingOpeningStockQuery
 
     const existingItemIds = new Set(existingOpeningStock?.map(os => os.item_id) || [])
@@ -112,7 +110,7 @@ export async function POST(request: NextRequest) {
       .from('opening_stock')
       .select('item_id, cost_price, selling_price')
       .eq('date', prevDateStr)
-    prevOpeningStockQuery = addOrgFilter(prevOpeningStockQuery)
+    prevOpeningStockQuery = addBranchFilter(addOrgFilter(prevOpeningStockQuery))
     const { data: prevOpeningStock } = await prevOpeningStockQuery
 
     // Create a map of previous day's opening stock prices by item_id
@@ -169,6 +167,7 @@ export async function POST(request: NextRequest) {
           date,
           recorded_by: user_id,
           organization_id: organizationId,
+          branch_id: branchId,
           notes: prevClosing
             ? `Auto-created from previous day's closing stock (${prevDateStr})${latestRestocking ? ' with latest restocking prices' : ''}`
             : `Auto-created with zero quantity (no closing stock found for ${prevDateStr})`,

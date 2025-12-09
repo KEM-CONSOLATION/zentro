@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { email, password, fullName, role, organization_id } = body
+    const { email, password, fullName, role, organization_id, branch_id } = body
 
     if (!email || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
@@ -50,6 +50,38 @@ export async function POST(request: NextRequest) {
       targetOrganizationId = organization_id
     } else {
       targetOrganizationId = profile.organization_id
+    }
+
+    // Validate branch_id based on role
+    let targetBranchId: string | null = null
+    if (role === 'tenant_admin' || (role === 'admin' && !branch_id)) {
+      // Tenant admin: branch_id should be null (can switch branches)
+      targetBranchId = null
+    } else if (role === 'branch_manager' || role === 'staff') {
+      // Branch manager and staff: branch_id is required
+      if (!branch_id) {
+        return NextResponse.json(
+          { error: 'branch_id is required when creating branch managers or staff users' },
+          { status: 400 }
+        )
+      }
+      // Verify branch belongs to the organization
+      const { data: branch } = await supabase
+        .from('branches')
+        .select('id, organization_id')
+        .eq('id', branch_id)
+        .single()
+
+      if (!branch || branch.organization_id !== targetOrganizationId) {
+        return NextResponse.json(
+          { error: 'Invalid branch_id or branch does not belong to the organization' },
+          { status: 400 }
+        )
+      }
+      targetBranchId = branch_id
+    } else {
+      // For other roles (superadmin), use provided branch_id or null
+      targetBranchId = branch_id || null
     }
 
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -115,8 +147,9 @@ export async function POST(request: NextRequest) {
             id: newUser.user.id,
             email: newUser.user.email || email,
             full_name: fullName || null,
-            role: (role as 'admin' | 'staff') || 'staff',
+            role: (role as 'admin' | 'staff' | 'tenant_admin' | 'branch_manager') || 'staff',
             organization_id: targetOrganizationId,
+            branch_id: targetBranchId,
           })
 
           if (!insertError) {
@@ -129,10 +162,21 @@ export async function POST(request: NextRequest) {
               .single()
 
             if (conflictProfile) {
+              const updateData: any = {}
               if (conflictProfile.role !== role) {
+                updateData.role = (role as 'admin' | 'staff') || 'staff'
+              }
+              if (targetOrganizationId) {
+                updateData.organization_id = targetOrganizationId
+              }
+              if (targetBranchId !== undefined) {
+                updateData.branch_id = targetBranchId
+              }
+
+              if (Object.keys(updateData).length > 0) {
                 const { error: updateError } = await supabaseAdmin
                   .from('profiles')
-                  .update({ role: (role as 'admin' | 'staff') || 'staff' })
+                  .update(updateData)
                   .eq('id', newUser.user.id)
 
                 if (!updateError) {

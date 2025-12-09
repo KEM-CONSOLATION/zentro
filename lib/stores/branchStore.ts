@@ -1,14 +1,6 @@
 import { create } from 'zustand'
 import { getSelectedBranchId, setSelectedBranchId, clearSelectedBranchId } from '@/lib/utils/cookies'
-
-interface Branch {
-  id: string
-  name: string
-  address?: string | null
-  organization_id: string
-  created_at: string
-  updated_at: string
-}
+import { Branch } from '@/types/database'
 
 interface BranchState {
   currentBranch: Branch | null

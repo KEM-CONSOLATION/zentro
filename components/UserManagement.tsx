@@ -3,8 +3,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Profile } from '@/types/database'
+import { useAuth } from '@/lib/hooks/useAuth'
+import { useBranchStore } from '@/lib/stores/branchStore'
 
 export default function UserManagement() {
+  const { organizationId, isTenantAdmin } = useAuth()
+  const { availableBranches, fetchBranches } = useBranchStore()
   const [users, setUsers] = useState<Profile[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -16,8 +20,15 @@ export default function UserManagement() {
     password: '',
     fullName: '',
     role: 'staff' as 'admin' | 'staff' | 'superadmin',
+    branch_id: '' as string | '',
   })
   const [showPassword, setShowPassword] = useState(false)
+
+  useEffect(() => {
+    if (organizationId && isTenantAdmin) {
+      fetchBranches(organizationId)
+    }
+  }, [organizationId, isTenantAdmin, fetchBranches])
 
   useEffect(() => {
     fetchUsers()
@@ -42,12 +53,24 @@ export default function UserManagement() {
 
       let query = supabase.from('profiles').select('*')
 
-      // Admins only see staff in their organization (exclude themselves)
+      // Admins only see staff in their organization (exclude themselves and other admins)
       if (profile.role === 'admin' && profile.organization_id) {
-        query = query
-          .eq('organization_id', profile.organization_id)
-          .eq('role', 'staff')
-          .neq('id', user.id) // Exclude current user
+        // Tenant admins see all staff and branch managers in their organization
+        // Branch managers see only staff in their branch
+        if (!profile.branch_id) {
+          // Tenant admin: see all staff and branch managers
+          query = query
+            .eq('organization_id', profile.organization_id)
+            .in('role', ['staff', 'branch_manager'])
+            .neq('id', user.id) // Exclude current user
+        } else {
+          // Branch manager: see only staff in their branch
+          query = query
+            .eq('organization_id', profile.organization_id)
+            .eq('branch_id', profile.branch_id)
+            .eq('role', 'staff')
+            .neq('id', user.id) // Exclude current user
+        }
       } else if (profile.role === 'superadmin') {
         // Superadmins see all users except themselves
         query = query.neq('id', user.id)
@@ -136,12 +159,45 @@ export default function UserManagement() {
     setCreating(true)
 
     try {
+      // Prepare user data
+      const userData: {
+        email: string
+        password: string
+        fullName: string
+        role: 'admin' | 'staff' | 'superadmin' | 'branch_manager'
+        branch_id?: string | null
+      } = {
+        email: newUser.email,
+        password: newUser.password,
+        fullName: newUser.fullName,
+        role:
+          newUser.role === 'admin' && !newUser.branch_id
+            ? 'tenant_admin'
+            : newUser.role === 'admin' && newUser.branch_id
+              ? 'branch_manager'
+              : newUser.role,
+      }
+
+      // Set branch_id based on role
+      if (newUser.role === 'tenant_admin' || newUser.role === 'admin') {
+        // Tenant admin: no branch_id
+        userData.branch_id = null
+      } else if (newUser.role === 'branch_manager' || newUser.role === 'staff') {
+        // Branch manager and staff: require branch_id
+        if (!newUser.branch_id) {
+          setError('Branch is required for branch managers and staff')
+          setCreating(false)
+          return
+        }
+        userData.branch_id = newUser.branch_id
+      }
+
       const response = await fetch('/api/users/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify(userData),
       })
 
       const data = await response.json()
@@ -151,7 +207,7 @@ export default function UserManagement() {
       }
 
       setSuccess(`User ${newUser.email} created successfully!`)
-      setNewUser({ email: '', password: '', fullName: '', role: 'staff' })
+      setNewUser({ email: '', password: '', fullName: '', role: 'staff', branch_id: '' })
       setShowCreateForm(false)
 
       await new Promise(resolve => setTimeout(resolve, 1000))
@@ -282,18 +338,47 @@ export default function UserManagement() {
               <select
                 id="role"
                 value={newUser.role}
-                onChange={e =>
+                onChange={e => {
+                  const role = e.target.value as 'admin' | 'staff' | 'superadmin' | 'branch_manager'
                   setNewUser({
                     ...newUser,
-                    role: e.target.value as 'admin' | 'staff' | 'superadmin',
+                    role,
+                    // Clear branch_id if role is admin (tenant admin)
+                    branch_id: role === 'admin' ? '' : newUser.branch_id,
                   })
-                }
+                }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
               >
                 <option value="staff">Staff</option>
-                <option value="admin">Admin</option>
+                <option value="branch_manager">Branch Manager</option>
+                {isTenantAdmin && <option value="admin">Tenant Admin</option>}
               </select>
             </div>
+
+            {(newUser.role === 'staff' || newUser.role === 'branch_manager') && (
+              <div>
+                <label
+                  htmlFor="branch_id"
+                  className="block text-sm font-medium text-gray-700 mb-2"
+                >
+                  Branch <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="branch_id"
+                  value={newUser.branch_id}
+                  onChange={e => setNewUser({ ...newUser, branch_id: e.target.value })}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 cursor-pointer"
+                >
+                  <option value="">Select a branch</option>
+                  {availableBranches.map(branch => (
+                    <option key={branch.id} value={branch.id}>
+                      {branch.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div className="flex gap-3">
               <button
@@ -307,7 +392,7 @@ export default function UserManagement() {
                 type="button"
                 onClick={() => {
                   setShowCreateForm(false)
-                  setNewUser({ email: '', password: '', fullName: '', role: 'staff' })
+                  setNewUser({ email: '', password: '', fullName: '', role: 'staff', branch_id: '' })
                   setError(null)
                 }}
                 className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 cursor-pointer"

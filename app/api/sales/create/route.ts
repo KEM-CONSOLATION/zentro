@@ -33,10 +33,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Get user's organization_id
+    // Get user's organization_id and branch_id
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('organization_id')
+      .select('organization_id, branch_id, role')
       .eq('id', user_id)
       .single()
 
@@ -45,6 +45,15 @@ export async function POST(request: NextRequest) {
     }
 
     const organization_id = profile.organization_id
+    
+    // Determine effective branch_id
+    // Tenant admin (admin without fixed branch_id): can specify branch_id in request
+    // Branch manager/staff: use fixed branch_id from profile
+    const branch_id_from_request = body.branch_id
+    const effective_branch_id =
+      profile.role === 'admin' && !profile.branch_id
+        ? branch_id_from_request || null // Tenant admin: can specify or null (all branches)
+        : profile.branch_id // Branch manager/staff: fixed branch
 
     // Reject future dates
     const today = new Date().toISOString().split('T')[0]
@@ -61,7 +70,7 @@ export async function POST(request: NextRequest) {
     if (restocking_id) {
       const { data: restocking } = await supabaseAdmin
         .from('restocking')
-        .select('quantity, organization_id')
+        .select('quantity, organization_id, branch_id')
         .eq('id', restocking_id)
         .single()
 
@@ -77,12 +86,24 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const { data: existingSales } = await supabaseAdmin
+      // Verify branch_id matches if effective_branch_id is set
+      if (effective_branch_id && restocking.branch_id && restocking.branch_id !== effective_branch_id) {
+        return NextResponse.json(
+          { error: 'Restocking batch does not belong to your branch' },
+          { status: 403 }
+        )
+      }
+
+      let existingSalesQuery = supabaseAdmin
         .from('sales')
         .select('quantity')
         .eq('restocking_id', restocking_id)
         .eq('date', date)
         .eq('organization_id', organization_id)
+      if (effective_branch_id) {
+        existingSalesQuery = existingSalesQuery.eq('branch_id', effective_branch_id)
+      }
+      const { data: existingSales } = await existingSalesQuery
 
       const restockQty = parseFloat(restocking.quantity.toString())
       const totalSalesSoFar =
@@ -92,7 +113,7 @@ export async function POST(request: NextRequest) {
     } else if (opening_stock_id) {
       const { data: openingStock } = await supabaseAdmin
         .from('opening_stock')
-        .select('quantity, organization_id')
+        .select('quantity, organization_id, branch_id')
         .eq('id', opening_stock_id)
         .single()
 
@@ -108,12 +129,24 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      const { data: existingSales } = await supabaseAdmin
+      // Verify branch_id matches if effective_branch_id is set
+      if (effective_branch_id && openingStock.branch_id && openingStock.branch_id !== effective_branch_id) {
+        return NextResponse.json(
+          { error: 'Opening stock batch does not belong to your branch' },
+          { status: 403 }
+        )
+      }
+
+      let existingSalesQuery = supabaseAdmin
         .from('sales')
         .select('quantity')
         .eq('opening_stock_id', opening_stock_id)
         .eq('date', date)
         .eq('organization_id', organization_id)
+      if (effective_branch_id) {
+        existingSalesQuery = existingSalesQuery.eq('branch_id', effective_branch_id)
+      }
+      const { data: existingSales } = await existingSalesQuery
 
       const openingQty = parseFloat(openingStock.quantity.toString())
       const totalSalesSoFar =
@@ -127,6 +160,9 @@ export async function POST(request: NextRequest) {
         .eq('item_id', item_id)
         .eq('date', date)
         .eq('organization_id', organization_id)
+      if (effective_branch_id) {
+        openingStockQuery = openingStockQuery.eq('branch_id', effective_branch_id)
+      }
       const { data: openingStock } = await openingStockQuery.single()
 
       let restockingQuery = supabaseAdmin
@@ -135,6 +171,9 @@ export async function POST(request: NextRequest) {
         .eq('item_id', item_id)
         .eq('date', date)
         .eq('organization_id', organization_id)
+      if (effective_branch_id) {
+        restockingQuery = restockingQuery.eq('branch_id', effective_branch_id)
+      }
       const { data: restocking } = await restockingQuery
 
       let existingSalesQuery = supabaseAdmin
@@ -143,6 +182,9 @@ export async function POST(request: NextRequest) {
         .eq('item_id', item_id)
         .eq('date', date)
         .eq('organization_id', organization_id)
+      if (effective_branch_id) {
+        existingSalesQuery = existingSalesQuery.eq('branch_id', effective_branch_id)
+      }
       const { data: existingSales } = await existingSalesQuery
 
       const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
@@ -162,6 +204,9 @@ export async function POST(request: NextRequest) {
         .eq('item_id', item_id)
         .eq('date', date)
         .eq('organization_id', organization_id)
+      if (effective_branch_id) {
+        openingStockQuery = openingStockQuery.eq('branch_id', effective_branch_id)
+      }
       const { data: openingStock } = await openingStockQuery.single()
 
       let restockingQuery = supabaseAdmin
@@ -170,6 +215,9 @@ export async function POST(request: NextRequest) {
         .eq('item_id', item_id)
         .eq('date', date)
         .eq('organization_id', organization_id)
+      if (effective_branch_id) {
+        restockingQuery = restockingQuery.eq('branch_id', effective_branch_id)
+      }
       const { data: restocking } = await restockingQuery
 
       let existingSalesQuery = supabaseAdmin
@@ -178,6 +226,9 @@ export async function POST(request: NextRequest) {
         .eq('item_id', item_id)
         .eq('date', date)
         .eq('organization_id', organization_id)
+      if (effective_branch_id) {
+        existingSalesQuery = existingSalesQuery.eq('branch_id', effective_branch_id)
+      }
       const { data: existingSales } = await existingSalesQuery
 
       const openingQty = openingStock ? parseFloat(openingStock.quantity.toString()) : 0
@@ -228,6 +279,7 @@ export async function POST(request: NextRequest) {
         date,
         recorded_by: user_id,
         organization_id: organization_id,
+        branch_id: effective_branch_id,
         description: description || null,
         restocking_id: restocking_id || null,
         opening_stock_id: opening_stock_id || null,
@@ -244,10 +296,10 @@ export async function POST(request: NextRequest) {
     if (isPastDate) {
       try {
         // Recalculate closing stock for this date
-        await recalculateClosingStock(date, user_id)
+        await recalculateClosingStock(date, user_id, effective_branch_id)
 
         // Cascade update opening stock for subsequent days
-        await cascadeUpdateFromDate(date, user_id)
+        await cascadeUpdateFromDate(date, user_id, effective_branch_id)
       } catch (error) {
         console.error('Failed to cascade update after sale:', error)
         // Don't fail the sale if cascade update fails
