@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useEffect, useState } from 'react'
 import Joyride, { CallBackProps, STATUS, Step } from 'react-joyride'
 import { Profile } from '@/types/database'
 import { markTourCompleted } from '@/lib/utils/cookies'
@@ -87,7 +87,13 @@ function getStepsForRole(user: Profile): Step[] {
 }
 
 export default function UserTour({ user, run, onClose }: UserTourProps) {
+  const [isClient, setIsClient] = useState(false)
   const steps = useMemo(() => getStepsForRole(user), [user])
+
+  useEffect(() => {
+    // Avoid hydration mismatch: only render Joyride after mount
+    setIsClient(true)
+  }, [])
 
   const handleCallback = (data: CallBackProps) => {
     const { status } = data
@@ -95,6 +101,10 @@ export default function UserTour({ user, run, onClose }: UserTourProps) {
       markTourCompleted()
       onClose()
     }
+  }
+
+  if (!isClient) {
+    return null
   }
 
   return (
