@@ -35,7 +35,8 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'CountPadi - Inventory Management System',
-    description: 'Your friendly inventory management partner. Streamline your inventory management with real-time tracking',
+    description:
+      'Your friendly inventory management partner. Streamline your inventory management with real-time tracking',
   },
   viewport: {
     width: 'device-width',

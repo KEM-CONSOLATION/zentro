@@ -116,7 +116,7 @@ function LoginForm() {
             src="/CountPadi.jpeg"
             alt={appName}
             width={120}
-              height={120}
+            height={120}
             className="object-contain"
             priority
           />
