@@ -225,10 +225,10 @@ export default function DashboardStatsCards({ userRole }: DashboardStatsCardsPro
         </div>
       </div>
       <div
-        className={`grid grid-cols-1 md:grid-cols-2 ${userRole === 'staff' ? 'lg:grid-cols-1' : 'lg:grid-cols-3'} gap-6`}
+        className={`grid grid-cols-1 md:grid-cols-2 ${userRole === 'staff' || userRole === 'controller' ? 'lg:grid-cols-1' : 'lg:grid-cols-3'} gap-6`}
       >
-        {/* Opening Stock Card - Hidden for staff */}
-        {userRole !== 'staff' && (
+        {/* Opening Stock Card - Hidden for staff and controller */}
+        {userRole !== 'staff' && userRole !== 'controller' && (
           <Link
             href="/dashboard/opening-stock"
             className="bg-white shadow-sm rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer group"
@@ -269,8 +269,8 @@ export default function DashboardStatsCards({ userRole }: DashboardStatsCardsPro
           </Link>
         )}
 
-        {/* Closing Stock Card - Hidden for staff */}
-        {userRole !== 'staff' && (
+        {/* Closing Stock Card - Hidden for staff and controller */}
+        {userRole !== 'staff' && userRole !== 'controller' && (
           <Link
             href="/dashboard/closing-stock"
             className="bg-white shadow-sm rounded-lg border border-gray-200 p-6 hover:shadow-md transition-shadow cursor-pointer group"

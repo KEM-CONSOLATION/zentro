@@ -122,7 +122,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
           />
         </svg>
       ),
-      roles: ['staff', 'branch_manager', 'admin', 'tenant_admin'],
+      roles: ['staff', 'controller', 'branch_manager', 'admin', 'tenant_admin'],
     },
     {
       name: 'Opening Stock',
@@ -383,7 +383,7 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
           />
         </svg>
       ),
-      roles: ['admin', 'tenant_admin', 'branch_manager'], // Only tenant admins can access management
+      roles: ['admin', 'tenant_admin', 'branch_manager'], // Admins, tenant admins, and branch managers can access management
     },
   ]
 

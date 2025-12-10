@@ -71,8 +71,8 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Staff Sales Ranking - only visible to management roles */}
-        {['branch_manager', 'admin', 'tenant_admin'].includes(profile.role) && (
+        {/* Staff Sales Ranking - visible to management roles and controllers (they issue items) */}
+        {['branch_manager', 'admin', 'tenant_admin', 'controller'].includes(profile.role) && (
           <div className="mt-8">
             <StaffSalesRanking />
           </div>
