@@ -113,10 +113,10 @@ function LoginForm() {
       <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8 space-y-6">
         <div className="flex flex-col items-center justify-center">
           <Image
-            src="/Inventrax.jpeg"
+            src="/CountPadi.jpeg"
             alt={appName}
             width={120}
-            height={120}
+              height={120}
             className="object-contain"
             priority
           />
@@ -234,7 +234,7 @@ export default function LoginPage() {
           <div className="max-w-md w-full bg-white rounded-lg shadow-xl p-8">
             <div className="flex flex-col items-center">
               <Image
-                src="/Inventrax.jpeg"
+                src="/CountPadi.jpeg"
                 alt={getAppName()}
                 width={120}
                 height={120}

@@ -1,6 +1,6 @@
 # Role-Based Permissions Guide
 
-This document outlines what each role (Staff, Branch Manager, Admin) can and cannot do in the Inventrax system.
+This document outlines what each role (Staff, Branch Manager, Admin) can and cannot do in the CountPadi system.
 
 ---
 

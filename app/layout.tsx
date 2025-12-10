@@ -14,12 +14,12 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Inventrax - Inventory Management System',
+  title: 'CountPadi - Inventory Management System',
   description:
-    'Track opening stock, closing stock, and daily sales with Inventrax. Streamline your inventory management with real-time tracking, multi-branch support, and comprehensive reporting.',
+    'Track opening stock, closing stock, and daily sales with CountPadi. Your friendly inventory management partner. Streamline your inventory management with real-time tracking, multi-branch support, and comprehensive reporting.',
   keywords:
-    'inventory management, stock tracking, inventory system, restaurant inventory, inventory software',
-  authors: [{ name: 'Inventrax' }],
+    'inventory management, stock tracking, inventory system, restaurant inventory, inventory software, CountPadi, Nigerian inventory management',
+  authors: [{ name: 'CountPadi' }],
   icons: {
     icon: '/favicon.ico',
     shortcut: '/favicon.ico',
@@ -27,15 +27,15 @@ export const metadata: Metadata = {
   },
   manifest: '/site.webmanifest',
   openGraph: {
-    title: 'Inventrax - Inventory Management System',
+    title: 'CountPadi - Inventory Management System',
     description:
-      'Streamline your inventory management with real-time tracking and comprehensive reporting',
+      'Your friendly inventory management partner. Streamline your inventory management with real-time tracking and comprehensive reporting',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Inventrax - Inventory Management System',
-    description: 'Streamline your inventory management with real-time tracking',
+    title: 'CountPadi - Inventory Management System',
+    description: 'Your friendly inventory management partner. Streamline your inventory management with real-time tracking',
   },
   viewport: {
     width: 'device-width',
