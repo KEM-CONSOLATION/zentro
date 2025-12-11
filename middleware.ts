@@ -7,6 +7,11 @@ function getSubdomain(hostname: string): string | null {
   // Remove port if present
   const host = hostname.split(':')[0]
 
+  // Allow default flow on Netlify hostnames (no org subdomain enforcement)
+  if (host.endsWith('netlify.app')) {
+    return null
+  }
+
   // For localhost subdomains (local testing), allow them
   // Example: lacuisine.localhost -> 'lacuisine'
   if (host.endsWith('.localhost')) {

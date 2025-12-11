@@ -25,6 +25,11 @@ function LoginForm() {
       try {
         // Get subdomain from hostname
         const hostname = window.location.hostname
+        if (hostname.endsWith('netlify.app')) {
+          // On Netlify default domain, skip subdomain lookup and use default branding
+          setLoadingOrg(false)
+          return
+        }
         const parts = hostname.split('.')
 
         // Check for localhost subdomains (local testing)
@@ -123,6 +128,10 @@ function LoginForm() {
       // Get subdomain from hostname if accessing via subdomain
       const hostname = window.location.hostname
       let subdomain: string | null = null
+      if (hostname.endsWith('netlify.app')) {
+        // On Netlify default domain, treat as no subdomain (fallback branding and flow)
+        subdomain = null
+      }
 
       // Check for localhost subdomains
       if (hostname.endsWith('.localhost')) {
