@@ -81,14 +81,51 @@ export async function POST(request: NextRequest) {
       })
     )
 
-    const { error: upsertError } = await supabaseAdmin
-      .from('opening_stock')
-      .upsert(openingStockRecords, {
-        onConflict: 'item_id,date,organization_id,branch_id',
-      })
+    // The unique constraint is (item_id, date, organization_id) - not including branch_id
+    // So we need to check for existing records and update/insert accordingly
+    for (const record of openingStockRecords) {
+      // Check if opening stock already exists for this item/date/org combination
+      const { data: existingRecord } = await supabaseAdmin
+        .from('opening_stock')
+        .select('id')
+        .eq('item_id', record.item_id)
+        .eq('date', date)
+        .eq('organization_id', organizationId || '')
+        .maybeSingle()
 
-    if (upsertError) {
-      return NextResponse.json({ error: upsertError.message }, { status: 500 })
+      if (existingRecord) {
+        // Update existing record
+        const { error: updateError } = await supabaseAdmin
+          .from('opening_stock')
+          .update({
+            quantity: record.quantity,
+            cost_price: record.cost_price,
+            selling_price: record.selling_price,
+            branch_id: branchId,
+            notes: record.notes,
+            recorded_by: user_id,
+          })
+          .eq('id', existingRecord.id)
+
+        if (updateError) {
+          return NextResponse.json(
+            { error: `Failed to update opening stock for item ${record.item_id}: ${updateError.message}` },
+            { status: 500 }
+          )
+        }
+      } else {
+        // Insert new record
+        const { error: insertError } = await supabaseAdmin
+          .from('opening_stock')
+          .insert(record)
+
+        if (insertError) {
+          return NextResponse.json(
+            { error: `Failed to insert opening stock for item ${record.item_id}: ${insertError.message}` },
+            { status: 500 }
+          )
+        }
+      }
     }
 
     for (const record of openingStockRecords) {

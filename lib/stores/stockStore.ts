@@ -113,13 +113,16 @@ export const useStockStore = create<StockState>((set, get) => ({
       }
 
       // Filter by branch_id if provided
+      // Match the report API behavior: strict branch filtering when branchId is set
       // Include both branch-specific AND NULL branch_id records when branchId exists
       // This allows fallback to NULL records if branch-specific doesn't exist
       // Components will prefer branch-specific when displaying
       if (branchId !== undefined && branchId !== null) {
+        // Fetch both branch-specific and NULL records (for fallback)
         query = query.or(`branch_id.eq.${branchId},branch_id.is.null`)
       } else {
-        // Only fetch NULL branch_id when no branchId is set
+        // When branchId is null/undefined, only fetch NULL branch_id records
+        // This matches the report API behavior for tenant admins
         query = query.is('branch_id', null)
       }
 

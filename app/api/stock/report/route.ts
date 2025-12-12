@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     let date = searchParams.get('date') || new Date().toISOString().split('T')[0]
+    const branchParam = searchParams.get('branch_id') // Allow branch to be passed as parameter
 
     // Normalize date format to YYYY-MM-DD (handle any format variations)
     if (date.includes('T')) {
@@ -53,10 +54,17 @@ export async function GET(request: NextRequest) {
         .eq('id', user.id)
         .single()
       organizationId = profile?.organization_id || null
-      branchId =
-        profile?.role === 'admin' && !profile?.branch_id
-          ? null // tenant admin can view all branches
-          : profile?.branch_id || null
+      
+      // Use branch from parameter if provided (for tenant admins with branch selector)
+      // Otherwise use profile.branch_id, or null for tenant admins without assigned branch
+      if (branchParam) {
+        branchId = branchParam
+      } else {
+        branchId =
+          profile?.role === 'admin' && !profile?.branch_id
+            ? null // tenant admin can view all branches
+            : profile?.branch_id || null
+      }
     }
 
     // Helper functions to add filters

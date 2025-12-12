@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { format } from 'date-fns'
 import { supabase } from '@/lib/supabase/client'
+import { useAuth } from '@/lib/hooks/useAuth'
 
 const formatDateSafely = (dateString: string): string => {
   if (!dateString || !dateString.trim()) return 'N/A'
@@ -44,6 +45,7 @@ interface StockReport {
 }
 
 export default function DailyStockReport({ type }: { type: 'opening' | 'closing' }) {
+  const { branchId, organizationId } = useAuth() // Get branch context from useAuth
   const today = format(new Date(), 'yyyy-MM-dd')
   const [selectedDate, setSelectedDate] = useState(() => {
     try {
@@ -99,7 +101,9 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
   const fetchReport = async () => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/stock/report?date=${selectedDate}`)
+      // Pass branch_id to match SalesForm's branch context
+      const branchParam = branchId ? `&branch_id=${branchId}` : ''
+      const response = await fetch(`/api/stock/report?date=${selectedDate}${branchParam}`)
       const data = await response.json()
       if (data.success) {
         setReport(data)
@@ -201,7 +205,9 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
 
         const result = await response.json()
         if (result.success) {
-          const reportResponse = await fetch(`/api/stock/report?date=${selectedDate}`)
+          // Pass branch_id to match SalesForm's branch context
+          const branchParam = branchId ? `&branch_id=${branchId}` : ''
+          const reportResponse = await fetch(`/api/stock/report?date=${selectedDate}${branchParam}`)
           const reportData = await reportResponse.json()
           if (reportData.success) {
             setReport(reportData)
@@ -459,10 +465,27 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
         .single()
 
       // Determine branch_id:
-      // For admins: use null (organization-wide) unless they have a branch_id
-      // For branch managers/staff: use their branch_id
-      const branchId =
-        profile?.role === 'admin' && !profile?.branch_id ? null : profile?.branch_id || null
+      // 1. Use profile.branch_id if user has one (for branch managers/staff)
+      // 2. For admins without branch_id: get organization's main branch
+      // 3. Only use null if organization has no branches (new onboarding)
+      let branchId: string | null = null
+      if (profile?.branch_id) {
+        branchId = profile.branch_id
+      } else if (profile?.role === 'admin' && !profile?.branch_id && profile?.organization_id) {
+        // Admin with no branch_id - try to get organization's main branch
+        const { data: mainBranch } = await supabase
+          .from('branches')
+          .select('id')
+          .eq('organization_id', profile.organization_id)
+          .eq('is_active', true)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .single()
+        
+        branchId = mainBranch?.id || null
+        // If no branches exist yet (new onboarding), branch_id will be null
+        // This is acceptable for new businesses that haven't created branches yet
+      }
 
       // Check if opening stock already exists for this date and branch
       let existingOpeningQuery = supabase
@@ -500,7 +523,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
           } = await supabase.auth.getUser()
           const user_id = user?.id || ''
           const reportResponse = await fetch(
-            `/api/stock/report?date=${selectedDate}${user_id ? `&user_id=${user_id}` : ''}`
+            `/api/stock/report?date=${selectedDate}${user_id ? `&user_id=${user_id}` : ''}${branchId ? `&branch_id=${branchId}` : ''}`
           )
           const reportData = await reportResponse.json()
           if (reportData.success) {

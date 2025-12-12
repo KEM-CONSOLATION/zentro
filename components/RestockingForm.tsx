@@ -416,11 +416,35 @@ export default function RestockingForm() {
             openingStockData.selling_price = item.selling_price ?? null
           }
 
-          const { error: createOpeningStockError } = await supabase
+          // Check if opening stock already exists for this item/date/org combination
+          // The unique constraint is (item_id, date, organization_id), so we need to check manually
+          const { data: existingOpeningStock } = await supabase
             .from('opening_stock')
-            .upsert(openingStockData, {
-              onConflict: 'item_id,date,organization_id,branch_id',
-            })
+            .select('id')
+            .eq('item_id', selectedItem)
+            .eq('date', date)
+            .eq('organization_id', profile?.organization_id || '')
+            .maybeSingle()
+
+          let createOpeningStockError = null
+          if (existingOpeningStock) {
+            // Update existing record (preserve quantity, update branch_id if needed)
+            const { error: updateError } = await supabase
+              .from('opening_stock')
+              .update({
+                branch_id: finalBranchId,
+                cost_price: openingStockData.cost_price,
+                selling_price: openingStockData.selling_price,
+              })
+              .eq('id', existingOpeningStock.id)
+            createOpeningStockError = updateError
+          } else {
+            // Insert new record
+            const { error: insertError } = await supabase
+              .from('opening_stock')
+              .insert(openingStockData)
+            createOpeningStockError = insertError
+          }
 
           if (createOpeningStockError) {
             console.error('Failed to create opening stock:', createOpeningStockError)

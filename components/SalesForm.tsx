@@ -472,6 +472,23 @@ export default function SalesForm() {
     openingStocks.length,
   ])
 
+  // Refresh opening stock when branch changes
+  useEffect(() => {
+    if (!organizationId || !date) return
+
+    const dateStr = date.includes('T')
+      ? date.split('T')[0]
+      : date.includes('/')
+        ? (() => {
+            const parts = date.split('/')
+            return parts.length === 3 ? `${parts[2]}-${parts[1]}-${parts[0]}` : date
+          })()
+        : date
+
+    // Force refresh when branch changes to get correct branch-specific data
+    fetchOpeningStockFromStore(dateStr, organizationId, branchId, true)
+  }, [branchId, organizationId, date, fetchOpeningStockFromStore])
+
   const fetchRestockingCallback = useCallback(async () => {
     try {
       let dateStr = date

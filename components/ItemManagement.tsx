@@ -146,11 +146,37 @@ export default function ItemManagement() {
             notes: 'Auto-created opening stock when item was added',
           }
 
-          const { error: openingStockError } = await supabase
+          // Check if opening stock already exists for this item/date/org/branch combination
+          // The unique constraint is (item_id, date, organization_id), so we need to check manually
+          const { data: existingOpeningStock } = await supabase
             .from('opening_stock')
-            .upsert(openingStockData, {
-              onConflict: 'item_id,date,organization_id,branch_id',
-            })
+            .select('id')
+            .eq('item_id', insertedItem.id)
+            .eq('date', today)
+            .eq('organization_id', profile?.organization_id || '')
+            .maybeSingle()
+
+          let openingStockError = null
+          if (existingOpeningStock) {
+            // Update existing record
+            const { error: updateError } = await supabase
+              .from('opening_stock')
+              .update({
+                quantity: initialQuantity,
+                cost_price: parseFloat(formData.cost_price) || null,
+                selling_price: parseFloat(formData.selling_price) || null,
+                branch_id: finalBranchId,
+                notes: 'Auto-created opening stock when item was added',
+              })
+              .eq('id', existingOpeningStock.id)
+            openingStockError = updateError
+          } else {
+            // Insert new record
+            const { error: insertError } = await supabase
+              .from('opening_stock')
+              .insert(openingStockData)
+            openingStockError = insertError
+          }
 
           if (openingStockError) {
             console.error('Failed to create opening stock:', openingStockError)
