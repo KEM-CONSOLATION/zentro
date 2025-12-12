@@ -81,6 +81,18 @@ function checkRateLimit(ip: string, limit: number = 100, windowMs: number = 6000
 }
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Allow public SEO files without authentication
+  if (
+    pathname === '/robots.txt' ||
+    pathname === '/sitemap.xml' ||
+    pathname === '/sitemap' ||
+    (pathname.startsWith('/google') && pathname.endsWith('.html'))
+  ) {
+    return NextResponse.next()
+  }
+
   // Subdomain detection (backward compatible - only activates if subdomain exists)
   const hostname = request.headers.get('host') || ''
   const subdomain = getSubdomain(hostname)
@@ -370,5 +382,17 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+  matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - robots.txt (robots file)
+     * - sitemap.xml (sitemap file)
+     * - google*.html (Google verification files)
+     * - files with image extensions (svg, png, jpg, jpeg, gif, webp)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|robots\\.txt|sitemap\\.xml|google[^/]*\\.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+  ],
 }
