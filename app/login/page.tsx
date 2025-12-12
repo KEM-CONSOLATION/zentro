@@ -115,6 +115,8 @@ function LoginForm() {
       )
     } else if (errorParam === 'validation_failed' && !error) {
       setError('Validation failed. Please try logging in again.')
+    } else if (errorParam === 'account_deactivated' && !error) {
+      setError('This account has been deactivated. Please contact support if you need assistance.')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [errorParam])
@@ -123,6 +125,14 @@ function LoginForm() {
     e.preventDefault()
     setLoading(true)
     setError(null)
+
+    // Block login for specific email to avoid confusion
+    const blockedEmail = 'princessokbusiness@gmail.com'
+    if (email.toLowerCase().trim() === blockedEmail.toLowerCase().trim()) {
+      setError('This account has been deactivated. Please contact support if you need assistance.')
+      setLoading(false)
+      return
+    }
 
     try {
       // Get subdomain from hostname if accessing via subdomain

@@ -240,6 +240,35 @@ export async function middleware(request: NextRequest) {
       }
     }
 
+    // Block specific email from accessing the system
+    if (user) {
+      const blockedEmail = 'princessokbusiness@gmail.com'
+      if (user.email?.toLowerCase().trim() === blockedEmail.toLowerCase().trim()) {
+        // Clear auth cookies and redirect to login with error
+        const response = NextResponse.redirect(
+          new URL('/login?error=account_deactivated', request.url)
+        )
+
+        // Clear all Supabase auth cookies
+        const cookieNames = ['sb-access-token', 'sb-refresh-token', 'sb-auth-token']
+        cookieNames.forEach(cookieName => {
+          response.cookies.delete(cookieName)
+          response.cookies.delete(`${cookieName}-expires`)
+        })
+
+        // Also clear cookies with the project ref
+        const projectRef = process.env.NEXT_PUBLIC_SUPABASE_URL?.split('//')[1]?.split('.')[0]
+        if (projectRef) {
+          cookieNames.forEach(cookieName => {
+            response.cookies.delete(`${projectRef}-auth-token`)
+            response.cookies.delete(`${projectRef}-auth-token-code-verifier`)
+          })
+        }
+
+        return response
+      }
+    }
+
     // Get organization ID from subdomain (if any)
     const orgIdFromSubdomain = request.headers.get('x-organization-id')
 
