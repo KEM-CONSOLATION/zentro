@@ -373,6 +373,8 @@ export default function SalesForm() {
     label: string
     available: number
   } | null>(null)
+  // Track if user manually selected a batch (to prevent auto-selection from overriding)
+  const manuallySelectedBatchRef = useRef(false)
   const [quantity, setQuantity] = useState('')
   const [pricePerUnit, setPricePerUnit] = useState('')
   const [totalPrice, setTotalPrice] = useState('')
@@ -609,131 +611,156 @@ export default function SalesForm() {
     }
   }, [selectedBatch, quantity])
 
-  // Auto-select batch when item is selected
-  useEffect(() => {
-    if (selectedItem && !selectedBatch) {
-      const normalizedDate = normalizeDate(date)
+  // Helper function to get all available batches for the selected item
+  const getAvailableBatches = useCallback(() => {
+    if (!selectedItem) return []
 
-      const itemOpeningStock = openingStocks.find(os => {
-        const osDate = normalizeDate(os.date)
-        return os.item_id === selectedItem && osDate === normalizedDate
-      })
+    const normalizedDate = normalizeDate(date)
+    const batches: Array<{
+      type: 'opening_stock' | 'restocking'
+      id: string
+      price: number
+      available: number
+      label: string
+      date?: string
+    }> = []
 
-      const itemRestockings = restockings.filter(r => {
-        const restockDate = normalizeDate(r.date)
-        return r.item_id === selectedItem && restockDate === normalizedDate
-      })
+    const itemOpeningStock = openingStocks.find(os => {
+      const osDate = normalizeDate(os.date)
+      return os.item_id === selectedItem && osDate === normalizedDate
+    })
 
-      const batches: Array<{
-        type: 'opening_stock' | 'restocking'
-        id: string
-        price: number
-        available: number
-      }> = []
+    if (itemOpeningStock) {
+      const openingQty = parseFloat(itemOpeningStock.quantity.toString())
+      const openingPrice =
+        itemOpeningStock.selling_price || itemOpeningStock.item?.selling_price || 0
+      const openingCostPrice = itemOpeningStock.cost_price || itemOpeningStock.item?.cost_price || 0
 
-      if (itemOpeningStock) {
-        const openingQty = parseFloat(itemOpeningStock.quantity.toString())
-        const openingPrice =
-          itemOpeningStock.selling_price || itemOpeningStock.item?.selling_price || 0
-        const openingCostPrice =
-          itemOpeningStock.cost_price || itemOpeningStock.item?.cost_price || 0
-
-        const openingSales = sales
-          .filter(s => {
-            const saleDate = normalizeDate(s.date)
-            return (
-              s.item_id === selectedItem &&
-              saleDate === normalizedDate &&
-              s.opening_stock_id === itemOpeningStock.id
-            )
-          })
-          .reduce((sum, s) => {
-            if (editingSale && s.id === editingSale.id) return sum
-            return sum + parseFloat(s.quantity.toString())
-          }, 0)
-
-        const available = Math.max(0, openingQty - openingSales)
-
-        batches.push({
-          type: 'opening_stock',
-          id: itemOpeningStock.id,
-          price: openingPrice || openingCostPrice,
-          available,
+      const openingSales = sales
+        .filter(s => {
+          const saleDate = normalizeDate(s.date)
+          return (
+            s.item_id === selectedItem &&
+            saleDate === normalizedDate &&
+            s.opening_stock_id === itemOpeningStock.id
+          )
         })
+        .reduce((sum, s) => {
+          if (editingSale && s.id === editingSale.id) return sum
+          return sum + parseFloat(s.quantity.toString())
+        }, 0)
+
+      const available = Math.max(0, openingQty - openingSales)
+
+      batches.push({
+        type: 'opening_stock',
+        id: itemOpeningStock.id,
+        price: openingPrice || openingCostPrice,
+        available,
+        label: `Opening Stock - ₦${(openingPrice || openingCostPrice).toFixed(2)} (Available: ${available})`,
+        date: itemOpeningStock.date,
+      })
+    }
+
+    const itemRestockings = restockings.filter(r => {
+      const restockDate = normalizeDate(r.date)
+      return r.item_id === selectedItem && restockDate === normalizedDate
+    })
+
+    itemRestockings.forEach(restocking => {
+      const restockDate = normalizeDate(restocking.date)
+      if (restockDate !== normalizedDate) return
+
+      const restockQty = parseFloat(restocking.quantity.toString())
+      const restockPrice = restocking.selling_price || restocking.item?.selling_price || 0
+      const restockCostPrice = restocking.cost_price || restocking.item?.cost_price || 0
+
+      const restockSales = sales
+        .filter(s => {
+          const saleDate = normalizeDate(s.date)
+          return (
+            s.item_id === selectedItem &&
+            saleDate === normalizedDate &&
+            s.restocking_id === restocking.id
+          )
+        })
+        .reduce((sum, s) => {
+          if (editingSale && s.id === editingSale.id) return sum
+          return sum + parseFloat(s.quantity.toString())
+        }, 0)
+
+      const available = Math.max(0, restockQty - restockSales)
+
+      batches.push({
+        type: 'restocking',
+        id: restocking.id,
+        price: restockPrice || restockCostPrice,
+        available,
+        label: `Restocked - ₦${(restockPrice || restockCostPrice).toFixed(2)} (Available: ${available})`,
+        date: restocking.date,
+      })
+    })
+
+    // Sort batches: opening stock first, then restocking by date (oldest first for FIFO)
+    // This ensures opening stock is prioritized for auto-selection
+    return batches.sort((a, b) => {
+      // Opening stock always comes first (highest priority)
+      if (a.type === 'opening_stock' && b.type === 'restocking') return -1
+      if (a.type === 'restocking' && b.type === 'opening_stock') return 1
+
+      // If both are opening stock, prefer the one with more available stock
+      if (a.type === 'opening_stock' && b.type === 'opening_stock') {
+        return b.available - a.available
       }
 
-      itemRestockings.forEach(restocking => {
-        const restockQty = parseFloat(restocking.quantity.toString())
-        const restockPrice = restocking.selling_price || restocking.item?.selling_price || 0
-        const restockCostPrice = restocking.cost_price || restocking.item?.cost_price || 0
+      // If both are restocking, sort by date (older first for FIFO)
+      if (a.type === 'restocking' && b.type === 'restocking' && a.date && b.date) {
+        const dateA = new Date(a.date).getTime()
+        const dateB = new Date(b.date).getTime()
+        if (dateA !== dateB) return dateA - dateB
+      }
 
-        const restockSales = sales
-          .filter(s => {
-            const saleDate = normalizeDate(s.date)
-            return (
-              s.item_id === selectedItem &&
-              saleDate === normalizedDate &&
-              s.restocking_id === restocking.id
-            )
-          })
-          .reduce((sum, s) => {
-            if (editingSale && s.id === editingSale.id) return sum
-            return sum + parseFloat(s.quantity.toString())
-          }, 0)
+      return 0
+    })
+  }, [selectedItem, date, openingStocks, restockings, sales, editingSale])
 
-        const available = Math.max(0, restockQty - restockSales)
+  // Auto-select batch when item is selected
+  // Priority: Opening Stock first, then restocking batches
+  // Only auto-select if user hasn't manually selected a batch
+  useEffect(() => {
+    if (selectedItem && !selectedBatch && !manuallySelectedBatchRef.current) {
+      const batches = getAvailableBatches()
 
-        batches.push({
-          type: 'restocking',
-          id: restocking.id,
-          price: restockPrice || restockCostPrice,
-          available,
-        })
-      })
-
-      // Auto-select the best batch: FIFO (First In, First Out)
-      // Opening stock should be sold first, then restocking batches in chronological order
+      // Auto-select opening stock first (if available), otherwise first restocking batch
       if (batches.length > 0) {
-        // Sort batches: opening stock first, then restocking by date (oldest first)
-        const sortedBatches = [...batches].sort((a, b) => {
-          // Opening stock always comes first
-          if (a.type === 'opening_stock' && b.type === 'restocking') return -1
-          if (a.type === 'restocking' && b.type === 'opening_stock') return 1
+        // Prefer opening stock with available quantity
+        const openingStockBatch = batches.find(b => b.type === 'opening_stock' && b.available > 0)
 
-          // If both are restocking, sort by date (older first for FIFO)
-          if (a.type === 'restocking' && b.type === 'restocking') {
-            const restockA = restockings.find(r => r.id === a.id)
-            const restockB = restockings.find(r => r.id === b.id)
-            if (restockA && restockB) {
-              const dateA = new Date(restockA.date).getTime()
-              const dateB = new Date(restockB.date).getTime()
-              if (dateA !== dateB) return dateA - dateB
-              // If same date, use created_at
-              const createdA = new Date(restockA.created_at || 0).getTime()
-              const createdB = new Date(restockB.created_at || 0).getTime()
-              return createdA - createdB
-            }
-          }
+        // If no opening stock available, use first restocking batch with stock
+        const restockingBatch = batches.find(b => b.type === 'restocking' && b.available > 0)
 
-          return 0
-        })
-
-        // Find the first batch with available stock (FIFO)
-        const bestBatch = sortedBatches.find(b => b.available > 0) || sortedBatches[0]
+        // Fallback to any batch with stock, or just the first batch
+        const bestBatch =
+          openingStockBatch || restockingBatch || batches.find(b => b.available > 0) || batches[0]
 
         if (bestBatch) {
           setSelectedBatch({
             type: bestBatch.type,
             id: bestBatch.id,
             price: bestBatch.price,
-            label: '',
+            label: bestBatch.label,
             available: bestBatch.available,
           })
           setPricePerUnit(bestBatch.price.toFixed(2))
         }
       }
     }
-  }, [selectedItem, date, openingStocks, restockings, sales, editingSale])
+  }, [selectedItem, date, getAvailableBatches, selectedBatch])
+
+  // Reset manual selection flag when item changes
+  useEffect(() => {
+    manuallySelectedBatchRef.current = false
+  }, [selectedItem])
 
   // User role is now derived from profile in store, no need for separate function
 
@@ -1070,6 +1097,7 @@ export default function SalesForm() {
       setDescription('')
       setSelectedItem('')
       setSelectedBatch(null)
+      manuallySelectedBatchRef.current = false
 
       // Force refresh all data to show updated availability and sales
       // Use a small delay to ensure database has updated
@@ -1129,6 +1157,24 @@ export default function SalesForm() {
 
   const handleQuantityChange = (value: string) => {
     setQuantity(value)
+
+    // Show warning if batch is selected (restocking or opening_stock) and quantity exceeds available
+    if (selectedBatch) {
+      const qty = parseFloat(value) || 0
+      if (qty > selectedBatch.available) {
+        const batchType =
+          selectedBatch.type === 'restocking' ? 'restocked batch' : 'opening stock batch'
+        setMessage({
+          type: 'error',
+          text: `Cannot use more than ${selectedBatch.available} units from this ${batchType}. Available: ${selectedBatch.available}`,
+        })
+      } else {
+        setMessage(null) // Clear error if within limit
+      }
+    } else {
+      setMessage(null) // Clear error if no batch selected
+    }
+
     const qty = parseFloat(value) || 0
     const price = parseFloat(pricePerUnit) || 0
     if (price > 0) {
@@ -1292,6 +1338,7 @@ export default function SalesForm() {
             onChange={e => {
               setSelectedItem(e.target.value)
               setSelectedBatch(null)
+              manuallySelectedBatchRef.current = false // Reset manual selection when item changes
               setPricePerUnit('')
               setTotalPrice('')
             }}
@@ -1519,105 +1566,83 @@ export default function SalesForm() {
 
         {selectedItem &&
           (() => {
-            const normalizedDate = normalizeDate(date)
+            // Get all available batches using the helper function
+            const allBatches = getAvailableBatches()
 
-            const itemOpeningStock = openingStocks.find(os => {
-              const osDate = normalizeDate(os.date)
-              return os.item_id === selectedItem && osDate === normalizedDate
-            })
-
-            const itemRestockings = restockings.filter(r => {
-              const restockDate = normalizeDate(r.date)
-              return r.item_id === selectedItem && restockDate === normalizedDate
-            })
-
-            const batches: Array<{
-              type: 'opening_stock' | 'restocking'
-              id: string
-              price: number
-              label: string
-              available: number
-            }> = []
-
-            if (itemOpeningStock) {
-              const openingQty = parseFloat(itemOpeningStock.quantity.toString())
-              const openingPrice =
-                itemOpeningStock.selling_price || itemOpeningStock.item?.selling_price || 0
-              const openingCostPrice =
-                itemOpeningStock.cost_price || itemOpeningStock.item?.cost_price || 0
-
-              const openingSales = sales
-                .filter(s => {
-                  const saleDate = normalizeDate(s.date)
-                  return (
-                    s.item_id === selectedItem &&
-                    saleDate === normalizedDate &&
-                    s.opening_stock_id === itemOpeningStock.id
-                  )
+            // Update batch availability if it changed (e.g., after new restocking)
+            if (allBatches.length > 0 && selectedBatch) {
+              const currentBatch = allBatches.find(
+                b => b.type === selectedBatch.type && b.id === selectedBatch.id
+              )
+              if (currentBatch && currentBatch.available !== selectedBatch.available) {
+                setSelectedBatch({
+                  ...selectedBatch,
+                  available: currentBatch.available,
+                  label: currentBatch.label,
                 })
-                .reduce((sum, s) => {
-                  if (editingSale && s.id === editingSale.id) return sum
-                  return sum + parseFloat(s.quantity.toString())
-                }, 0)
-
-              const available = Math.max(0, openingQty - openingSales)
-
-              batches.push({
-                type: 'opening_stock',
-                id: itemOpeningStock.id,
-                price: openingPrice || openingCostPrice,
-                label: `Opening Stock - ${openingPrice > 0 ? `₦${openingPrice.toFixed(2)}` : openingCostPrice > 0 ? `Cost: ₦${openingCostPrice.toFixed(2)}` : 'No price'} (Available: ${available})`,
-                available,
-              })
-            }
-
-            itemRestockings.forEach(restocking => {
-              const restockQty = parseFloat(restocking.quantity.toString())
-              const restockPrice = restocking.selling_price || restocking.item?.selling_price || 0
-              const restockCostPrice = restocking.cost_price || restocking.item?.cost_price || 0
-
-              const restockSales = sales
-                .filter(s => {
-                  const saleDate = normalizeDate(s.date)
-                  return (
-                    s.item_id === selectedItem &&
-                    saleDate === normalizedDate &&
-                    s.restocking_id === restocking.id
-                  )
-                })
-                .reduce((sum, s) => {
-                  if (editingSale && s.id === editingSale.id) return sum
-                  return sum + parseFloat(s.quantity.toString())
-                }, 0)
-
-              const available = Math.max(0, restockQty - restockSales)
-
-              batches.push({
-                type: 'restocking',
-                id: restocking.id,
-                price: restockPrice || restockCostPrice,
-                label: `Restocked - ${restockPrice > 0 ? `₦${restockPrice.toFixed(2)}` : restockCostPrice > 0 ? `Cost: ₦${restockCostPrice.toFixed(2)}` : 'No price'} (Available: ${available})`,
-                available,
-              })
-            })
-
-            // Auto-select the best batch: prefer restocking batches with available stock, then opening stock
-            if (batches.length > 0 && !selectedBatch) {
-              const bestBatch =
-                batches.find(b => b.type === 'restocking' && b.available > 0) ||
-                batches.find(b => b.type === 'opening_stock' && b.available > 0) ||
-                batches[0] // Fallback to first batch if none available
-
-              if (bestBatch) {
-                setSelectedBatch(bestBatch)
-                setPricePerUnit(bestBatch.price.toFixed(2))
-                if (quantity) {
-                  setTotalPrice((parseFloat(quantity) * bestBatch.price).toFixed(2))
-                }
               }
             }
 
-            // Show price info but hide batch selection
+            // Show batch selector dropdown if multiple batches available
+            if (allBatches.length > 1) {
+              return (
+                <div className="mt-2">
+                  <label
+                    htmlFor="batch-selector"
+                    className="block text-xs font-medium text-gray-700 mb-1"
+                  >
+                    Select Batch (Optional)
+                    <span className="text-gray-500 font-normal ml-1">
+                      - Auto-selected:{' '}
+                      {selectedBatch?.type === 'opening_stock'
+                        ? 'Opening Stock'
+                        : 'Restocked Batch'}
+                    </span>
+                  </label>
+                  <select
+                    id="batch-selector"
+                    value={selectedBatch ? `${selectedBatch.type}-${selectedBatch.id}` : ''}
+                    onChange={e => {
+                      const value = e.target.value
+                      // Split only on the first '-' to separate type from UUID (UUIDs contain dashes)
+                      const firstDashIndex = value.indexOf('-')
+                      if (firstDashIndex === -1) return
+
+                      const type = value.substring(0, firstDashIndex) as
+                        | 'opening_stock'
+                        | 'restocking'
+                      const id = value.substring(firstDashIndex + 1)
+
+                      const batch = allBatches.find(b => b.type === type && b.id === id)
+                      if (batch) {
+                        manuallySelectedBatchRef.current = true // Mark as manually selected
+                        setSelectedBatch({
+                          type: batch.type,
+                          id: batch.id,
+                          price: batch.price,
+                          label: batch.label,
+                          available: batch.available,
+                        })
+                        setPricePerUnit(batch.price.toFixed(2))
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 bg-white min-h-[44px]"
+                  >
+                    {allBatches.map(batch => (
+                      <option key={`${batch.type}-${batch.id}`} value={`${batch.type}-${batch.id}`}>
+                        {batch.label}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    💡 Tip: Select a different batch if the auto-selected one doesn't have enough
+                    quantity
+                  </p>
+                </div>
+              )
+            }
+
+            // Show price info if only one batch or batch is selected
             if (selectedBatch) {
               return (
                 <div className="mt-1 text-xs text-gray-500">
@@ -1645,11 +1670,23 @@ export default function SalesForm() {
             onChange={e => handleQuantityChange(e.target.value)}
             required
             min="0"
+            max={selectedBatch ? selectedBatch.available : undefined}
             aria-label="Quantity used"
             inputMode="numeric"
-            className="w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder:text-gray-400 min-h-[44px]"
+            className={`w-full px-3 py-2.5 sm:py-2 text-base sm:text-sm border rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900 placeholder:text-gray-400 min-h-[44px] ${
+              selectedBatch && parseFloat(quantity) > selectedBatch.available
+                ? 'border-red-500 focus:ring-red-500'
+                : 'border-gray-300'
+            }`}
             placeholder="0"
           />
+          {selectedBatch && (
+            <p className="mt-1 text-xs text-amber-600">
+              ⚠️ Maximum quantity for this{' '}
+              {selectedBatch.type === 'restocking' ? 'restocked' : 'opening stock'} batch:{' '}
+              {selectedBatch.available} units
+            </p>
+          )}
           {selectedItem &&
             (() => {
               const item = items.find(item => item.id === selectedItem)
@@ -1807,7 +1844,10 @@ export default function SalesForm() {
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <p className="font-semibold text-gray-900">
-                          {sale.item?.name || 'Unknown'}
+                          {sale.item?.name ||
+                            (sale.item_id
+                              ? `Item ID: ${sale.item_id.substring(0, 8)}...`
+                              : 'Unknown')}
                         </p>
                         <p className="text-xs text-gray-500">
                           {format(new Date(sale.date), 'MMM dd, yyyy')}
@@ -1955,7 +1995,10 @@ export default function SalesForm() {
                           {format(new Date(sale.date), 'MMM dd, yyyy')}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
-                          {sale.item?.name || 'Unknown'}
+                          {sale.item?.name ||
+                            (sale.item_id
+                              ? `Item ID: ${sale.item_id.substring(0, 8)}...`
+                              : 'Unknown')}
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-900">
                           {sale.batch_label ? (

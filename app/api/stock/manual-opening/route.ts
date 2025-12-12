@@ -109,19 +109,21 @@ export async function POST(request: NextRequest) {
 
         if (updateError) {
           return NextResponse.json(
-            { error: `Failed to update opening stock for item ${record.item_id}: ${updateError.message}` },
+            {
+              error: `Failed to update opening stock for item ${record.item_id}: ${updateError.message}`,
+            },
             { status: 500 }
           )
         }
       } else {
         // Insert new record
-        const { error: insertError } = await supabaseAdmin
-          .from('opening_stock')
-          .insert(record)
+        const { error: insertError } = await supabaseAdmin.from('opening_stock').insert(record)
 
         if (insertError) {
           return NextResponse.json(
-            { error: `Failed to insert opening stock for item ${record.item_id}: ${insertError.message}` },
+            {
+              error: `Failed to insert opening stock for item ${record.item_id}: ${insertError.message}`,
+            },
             { status: 500 }
           )
         }

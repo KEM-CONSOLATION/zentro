@@ -481,7 +481,7 @@ export default function DailyStockReport({ type }: { type: 'opening' | 'closing'
           .order('created_at', { ascending: true })
           .limit(1)
           .single()
-        
+
         branchId = mainBranch?.id || null
         // If no branches exist yet (new onboarding), branch_id will be null
         // This is acceptable for new businesses that haven't created branches yet

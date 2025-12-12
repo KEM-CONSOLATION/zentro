@@ -51,7 +51,7 @@ export const useSalesStore = create<SalesState>((set, get) => ({
         .select(
           `
           *,
-          item:items(*),
+          item:items!left(*),
           recorded_by_profile:profiles(*),
           restocking:restocking(*),
           opening_stock:opening_stock(*)
@@ -73,13 +73,43 @@ export const useSalesStore = create<SalesState>((set, get) => ({
 
       if (error) throw error
 
-      set({
-        sales: data || [],
-        loading: false,
-        lastFetched: now,
-        lastFetchedDate: date,
-        error: null,
-      })
+      // If any sales have missing items, try to fetch them separately
+      // This handles cases where items were deleted but sales records remain
+      const salesWithMissingItems = (data || []).filter(sale => !sale.item && sale.item_id)
+      if (salesWithMissingItems.length > 0) {
+        const missingItemIds = [...new Set(salesWithMissingItems.map(s => s.item_id))]
+        const { data: missingItems } = await supabase
+          .from('items')
+          .select('*')
+          .in('id', missingItemIds)
+
+        // Create a map of items by id
+        const itemsMap = new Map((missingItems || []).map(item => [item.id, item]))
+
+        // Update sales with missing items
+        const updatedSales = (data || []).map(sale => {
+          if (!sale.item && sale.item_id && itemsMap.has(sale.item_id)) {
+            return { ...sale, item: itemsMap.get(sale.item_id) }
+          }
+          return sale
+        })
+
+        set({
+          sales: updatedSales,
+          loading: false,
+          lastFetched: now,
+          lastFetchedDate: date,
+          error: null,
+        })
+      } else {
+        set({
+          sales: data || [],
+          loading: false,
+          lastFetched: now,
+          lastFetchedDate: date,
+          error: null,
+        })
+      }
     } catch (error) {
       console.error('Error fetching sales:', error)
       set({

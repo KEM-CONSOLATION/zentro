@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
         .eq('id', user.id)
         .single()
       organizationId = profile?.organization_id || null
-      
+
       // Use branch from parameter if provided (for tenant admins with branch selector)
       // Otherwise use profile.branch_id, or null for tenant admins without assigned branch
       if (branchParam) {
